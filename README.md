@@ -35,7 +35,7 @@
 | `app.js` | **ΟΧΙ** — η σελίδα, ίδια σε κάθε επιχείρηση |
 | `styles.css` | **ΟΧΙ** — τα χρώματα ορίζονται στο `company-data.js` |
 | `engine/rules.js` | **ΟΧΙ** — οι κανόνες |
-| `netlify/functions/api.js` | **ΟΧΙ** |
+| `netlify/functions/api.mjs` | **ΟΧΙ** |
 | `demo-data.js` | Μόνο αν θες άλλη φανταστική επιχείρηση για επίδειξη |
 | `assets/` | **ΝΑΙ** — εδώ βάζεις το λογότυπο του πελάτη |
 | `netlify.toml`, `package.json` | **ΟΧΙ** |
