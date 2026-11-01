@@ -193,10 +193,12 @@
     if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
 
     const isAdmin = person.role === "admin";
-    const targetId = isAdmin && body.staffId ? String(body.staffId) : person.id;
-    if (!isAdmin && targetId !== person.id) {
+    // Μόνο ο διαχειριστής δηλώνει για λογαριασμό άλλου. Αν το ζητήσει
+    // εργαζόμενος, το λέμε καθαρά αντί να το αγνοήσουμε σιωπηλά.
+    if (!isAdmin && body.staffId && String(body.staffId) !== person.id) {
       return fail(403, "Μπορείς να δηλώσεις μόνο για τον εαυτό σου.");
     }
+    const targetId = isAdmin && body.staffId ? String(body.staffId) : person.id;
     const target = findStaff(ctx.company, targetId);
     if (!target) return fail(400, "Άγνωστος εργαζόμενος.");
 

@@ -283,8 +283,15 @@
     $("top-me").textContent = state.me.role === "admin"
       ? `${state.me.name} · διαχειριστής`
       : state.me.name;
-    document.querySelector('[data-view="admin"]').hidden = state.me.role !== "admin";
-    if (state.me.role !== "admin" && state.view === "admin") setView("mine");
+    const isAdmin = state.me.role === "admin";
+    document.querySelector('[data-view="admin"]').hidden = !isAdmin;
+    if (!isAdmin) {
+      // Αν πριν ήταν συνδεδεμένος ο υπεύθυνος στην ίδια συσκευή, δεν αφήνουμε
+      // τα δικά του πράγματα στη σελίδα.
+      if (state.view === "admin") setView("mine");
+      $("admin-calendar").innerHTML = "";
+      $("admin-locked").innerHTML = "";
+    }
     if (!state.month) state.month = currentMonth(state.cfg.today);
     await loadMonth();
   }
@@ -613,6 +620,7 @@
       (!state.cfg.rules.allowPastDays && day < state.data.today)
     );
     $("sheet-kinds").hidden = blocked;
+    $("sheet-note-row").hidden = blocked;
     $("sheet-save").hidden = blocked;
     $("sheet-clear").hidden = blocked || !facts.mine;
     if (blocked) {

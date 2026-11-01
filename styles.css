@@ -340,4 +340,7 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
   .sheet-box { border-radius: var(--radius); }
   .day .num { font-size: 1.1rem; }
   .tabs { top: 65px; }
+  /* Σε μεγάλη οθόνη το ημερολόγιο δεν χρειάζεται να απλώνεται όσο η σελίδα —
+     τα τετράγωνα θα γίνονταν τεράστια. */
+  .calendar { max-width: 520px; margin-inline: auto; }
 }
