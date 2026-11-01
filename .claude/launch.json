@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "shift-planner",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["dev-server.js"],
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8787", "-d", "C:/Users/giorg/Desktop/shift-planner"],
       "port": 8787
     }
   ]

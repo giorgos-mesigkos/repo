@@ -33,9 +33,90 @@
 
   const STORAGE = "shift-planner-session";
 
+  /* ---------------- λειτουργία επίδειξης ----------------
+     Με ?demo=1 στο τέλος της διεύθυνσης, η σελίδα δεν μιλάει στον
+     διακομιστή: τρέχει τους ΙΔΙΟΥΣ κανόνες (engine/rules.js) μέσα στον
+     browser, με ψεύτικη επιχείρηση (demo-data.js) και αποθήκευση στη
+     συσκευή. Χρήσιμο για επίδειξη σε πελάτη. */
+
+  const DEMO = new URLSearchParams(location.search).has("demo");
+  const DEMO_PREFIX = "shift-planner-demo:";
+  const demoMemory = {};        // εφεδρεία, αν ο browser μπλοκάρει την αποθήκευση
+  let demoCtx = null;
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.onload = () => resolve();
+      el.onerror = () => reject(new Error(`Δεν φόρτωσε το ${src}.`));
+      document.head.appendChild(el);
+    });
+  }
+
+  async function startDemo() {
+    await loadScript("engine/rules.js");
+    await loadScript("demo-data.js");
+    demoCtx = {
+      company: globalThis.DEMO_COMPANY,
+      store: {
+        async get(key) {
+          try {
+            return localStorage.getItem(DEMO_PREFIX + key);
+          } catch {
+            return Object.prototype.hasOwnProperty.call(demoMemory, key) ? demoMemory[key] : null;
+          }
+        },
+        async set(key, value) {
+          try {
+            localStorage.setItem(DEMO_PREFIX + key, value);
+          } catch {
+            demoMemory[key] = value;
+          }
+        },
+      },
+      // Στην επίδειξη δεν υπάρχει τίποτα να προστατευτεί — μια απλή,
+      // σταθερή υπογραφή αρκεί. Στο Netlify η υπογραφή είναι HMAC.
+      sign: (text) => {
+        let h = 0;
+        for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+        return `0000000${(h >>> 0).toString(16)}`.slice(-8);
+      },
+    };
+    $("demo-banner").hidden = false;
+    $("demo-reset").addEventListener("click", resetDemo);
+  }
+
+  function resetDemo() {
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith(DEMO_PREFIX)) localStorage.removeItem(key);
+      }
+      localStorage.removeItem(STORAGE);
+    } catch {
+      /* τίποτα */
+    }
+    for (const key of Object.keys(demoMemory)) delete demoMemory[key];
+    location.reload();
+  }
+
   /* ---------------- επικοινωνία ---------------- */
 
   async function api(action, data) {
+    // Επίδειξη: οι ίδιοι κανόνες, τοπικά, χωρίς διακομιστή.
+    if (DEMO) {
+      const out = await globalThis.ShiftRules.handle(demoCtx, {
+        action,
+        token: state.token,
+        data: data || {},
+      });
+      if (out.status !== 200) {
+        if (out.status === 401 && state.token) logout();
+        throw new Error(out.body.error || "Κάτι πήγε λάθος.");
+      }
+      return out.body;
+    }
+
     const res = await fetch("/api", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -707,6 +788,7 @@
   async function start() {
     wire();
     try {
+      if (DEMO) await startDemo();
       state.cfg = await api("config", {});
     } catch (e) {
       document.body.innerHTML =

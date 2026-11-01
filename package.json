@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "description": "Αιτήματα ρεπό και ωραρίων προσωπικού, με κοινό μηνιαίο πίνακα.",
-  "scripts": {
-    "dev": "node dev-server.js"
-  },
   "dependencies": {
     "@netlify/blobs": "^8.1.0"
   }

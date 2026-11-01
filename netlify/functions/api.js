@@ -2,24 +2,35 @@
  * Το μοναδικό endpoint της εφαρμογής. Δεν αλλάζει ανά επιχείρηση.
  *
  * Η σελίδα στέλνει πάντα POST στο /api με { action, token, data } και παίρνει
- * JSON πίσω. Όλη η λογική είναι στο netlify/lib/core.js — εδώ μόνο συνδέουμε
- * την αποθήκευση (Netlify Blobs) και μεταφράζουμε αίτημα/απάντηση.
+ * JSON πίσω. Οι κανόνες είναι στο engine/rules.js — εδώ μόνο δίνουμε στους
+ * κανόνες τα τρία πράγματα που τους λείπουν: την επιχείρηση, την αποθήκευση,
+ * και την υπογραφή του "εισιτηρίου".
  */
 
+const crypto = require("crypto");
 const { getStore } = require("@netlify/blobs");
-const { handle } = require("../lib/core.js");
+const { COMPANY } = require("../../company-data.js");
+const rules = require("../../engine/rules.js");
+
+// Η μυστική φράση υπογράφει τις συνδέσεις. Προτιμάται η environment variable
+// του Netlify, ώστε να μη βρίσκεται μέσα στα αρχεία του έργου.
+const SECRET = process.env.SHIFT_SECRET || (COMPANY.security && COMPANY.security.secret) || "";
 
 // Netlify Blobs: δωρεάν αποθήκευση που έρχεται μαζί με το site. Δεν θέλει
-// στήσιμο, ούτε νέο λογαριασμό — αρκεί το site να είναι στο Netlify.
+// στήσιμο ούτε νέο λογαριασμό — αρκεί το site να είναι στο Netlify.
 const store = {
   async get(key) {
-    const blobs = getStore("shift-planner");
-    return blobs.get(key, { type: "text" });
+    return getStore("shift-planner").get(key, { type: "text" });
   },
   async set(key, value) {
-    const blobs = getStore("shift-planner");
-    await blobs.set(key, value);
+    await getStore("shift-planner").set(key, value);
   },
+};
+
+const ctx = {
+  company: COMPANY,
+  store,
+  sign: (text) => crypto.createHmac("sha256", SECRET).update(text).digest("hex").slice(0, 32),
 };
 
 const json = (status, body) => ({
@@ -29,8 +40,10 @@ const json = (status, body) => ({
 });
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") {
-    return json(405, { error: "Μόνο POST." });
+  if (event.httpMethod !== "POST") return json(405, { error: "Μόνο POST." });
+
+  if (!SECRET) {
+    return json(500, { error: "Λείπει η μυστική φράση (SHIFT_SECRET ή security.secret)." });
   }
 
   let payload;
@@ -41,7 +54,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const result = await handle(store, payload);
+    const result = await rules.handle(ctx, payload);
     return json(result.status, result.body);
   } catch (err) {
     // Το σφάλμα μένει στα logs του Netlify. Στον χρήστη λέμε κάτι κατανοητό,

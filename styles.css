@@ -86,6 +86,21 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
 }
 label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 .25rem; }
 
+/* ---------- ταινία επίδειξης ---------- */
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .45rem .8rem;
+  background: #78350f;
+  color: #fde68a;
+  font-size: .8rem;
+  font-weight: 600;
+}
+.demo-banner button { color: #fde68a; border-color: #a16207; }
+
 /* ---------- σύνδεση ---------- */
 
 .login {
