@@ -77,9 +77,6 @@ export default async (req) => {
     // Το σφάλμα μένει στα logs του Netlify. Στον χρήστη λέμε κάτι κατανοητό,
     // χωρίς τεχνικές λεπτομέρειες.
     console.error("shift-planner:", err);
-    return json(500, {
-      error: "Κάτι πήγε λάθος στον διακομιστή. Δοκίμασε ξανά.",
-      detail: String((err && err.message) || err), // ΠΡΟΣΩΡΙΝΟ — να φύγει
-    });
+    return json(500, { error: "Κάτι πήγε λάθος στον διακομιστή. Δοκίμασε ξανά." });
   }
 };
