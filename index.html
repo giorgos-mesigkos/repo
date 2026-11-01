@@ -56,7 +56,8 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab is-on" data-view="mine" role="tab">Τα δικά μου</button>
-    <button class="tab" data-view="all" role="tab">Ο μήνας όλων</button>
+    <button class="tab" data-view="all" role="tab">Μέρα-μέρα</button>
+    <button class="tab" data-view="people" role="tab">Ανά άτομο</button>
     <button class="tab" data-view="admin" role="tab" hidden>Διαχείριση</button>
   </nav>
 
@@ -81,12 +82,12 @@
     </ul>
 
     <section class="block">
-      <h2>Σημείωση για όλον τον μήνα</h2>
-      <p class="muted small">Γενικό μήνυμα προς τη διεύθυνση. Αν θέλεις να πεις
-        <b>γιατί</b> ζητάς μια συγκεκριμένη μέρα, γράψ' το μέσα στη μέρα —
-        εκεί το βλέπουν όλοι δίπλα στο αίτημα.</p>
+      <h2>Τι θέλω γενικά αυτόν τον μήνα</h2>
+      <p class="muted small">Ό,τι αφορά όλον τον μήνα και όχι συγκεκριμένη μέρα.
+        Το διαβάζει η διεύθυνση όταν φτιάχνει το πρόγραμμα. Αν θέλεις να πεις
+        <b>γιατί</b> ζητάς μια συγκεκριμένη μέρα, γράψ' το μέσα στη μέρα.</p>
       <textarea id="my-note" rows="3" maxlength="400"
-        placeholder="π.χ. «όλο τον μήνα μπορώ μόνο απογεύματα»."></textarea>
+        placeholder="π.χ. «θέλω μόνο 2 δωδεκάωρα και 3 πρωινά» ή «μπορώ μόνο απογεύματα»."></textarea>
       <p id="note-unsaved" class="error small" hidden>Δεν αποθηκεύτηκε ακόμα — πάτα «Αποθήκευση σημείωσης».</p>
       <button id="save-note" class="primary">Αποθήκευση σημείωσης</button>
     </section>
@@ -101,10 +102,13 @@
   <main id="view-all" class="view" hidden>
     <p class="muted small">Όλα τα αιτήματα του μήνα, μέρα προς μέρα. Οι μέρες χωρίς αίτημα δεν εμφανίζονται.</p>
     <div id="all-days" class="list"></div>
-    <section class="block">
-      <h2>Σύνολα ανά άτομο</h2>
-      <div id="all-people" class="list"></div>
-    </section>
+  </main>
+
+  <!-- ---- Ανά άτομο: τι θέλει ο καθένας, μαζεμένο ---- -->
+  <main id="view-people" class="view" hidden>
+    <p class="muted small">Όλο το προσωπικό και τι ζήτησε ο καθένας αυτόν τον
+      μήνα — για να φτιαχτεί το πρόγραμμα χωρίς να ψάχνει κανείς μέρα-μέρα.</p>
+    <div id="people-list" class="list"></div>
   </main>
 
   <!-- ---- Διαχείριση (μόνο για admin) ---- -->

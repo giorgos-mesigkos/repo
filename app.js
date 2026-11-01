@@ -152,6 +152,13 @@
     return `${WEEKDAYS[wd]} ${d} ${MONTHS[m - 1]}`;
   }
 
+  /** «Τετ 23» — ο μήνας φαίνεται ήδη στην κορυφή, δεν τον ξαναλέμε. */
+  function dayShort(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    const wd = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+    return `${WEEKDAYS[wd]} ${d}`;
+  }
+
   function daysInMonth(month) {
     const [y, m] = month.split("-").map(Number);
     return new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -497,10 +504,6 @@
       date.className = "date";
       date.textContent = dateLabel(key);
       head.appendChild(date);
-      const count = document.createElement("span");
-      count.className = "muted small";
-      count.textContent = facts.off ? `${facts.off} ρεπό` : "";
-      head.appendChild(count);
       item.appendChild(head);
 
       const rows = document.createElement("div");
@@ -523,47 +526,73 @@
     }
   }
 
-  function renderAllPeople() {
-    const box = $("all-people");
+  /**
+   * Ένα κουτί ανά εργαζόμενο: τι θέλει γενικά τον μήνα, και όλες του οι μέρες
+   * μαζεμένες. Εμφανίζονται ΟΛΟΙ, ακόμα κι όσοι δεν δήλωσαν τίποτα — ώστε να
+   * φαίνεται ποιος λείπει πριν κλείσει το πρόγραμμα.
+   */
+  function renderPeople() {
+    const box = $("people-list");
     box.innerHTML = "";
     const entries = state.data.entries || {};
-    let shown = 0;
 
     for (const p of state.cfg.staff) {
-      const entry = entries[p.id];
-      if (!entry) continue;
-      const days = Object.values(entry.days || {});
-      if (!days.length && !entry.note) continue;
-      shown++;
-
-      const offs = days.filter((d) => d.kind === "off").length;
-      const lims = days.filter((d) => d.kind === "limited").length;
+      const entry = entries[p.id] || {};
+      const days = entry.days || {};
+      const keys = Object.keys(days).sort();
+      const offs = keys.filter((k) => days[k].kind === "off").length;
+      const lims = keys.filter((k) => days[k].kind === "limited").length;
 
       const item = document.createElement("div");
       item.className = "item";
+
       const head = document.createElement("div");
       head.className = "item-head";
       const who = document.createElement("span");
       who.className = "date";
       who.textContent = p.team ? `${p.name} · ${p.team}` : p.name;
       head.appendChild(who);
-      const sum = document.createElement("span");
-      sum.className = "muted small";
-      sum.textContent = `${offs} ρεπό · ${lims} με ώρες`;
-      head.appendChild(sum);
+      if (keys.length) {
+        const sum = document.createElement("span");
+        sum.className = "muted small";
+        sum.textContent = `${offs} ρεπό · ${lims} με ώρες`;
+        head.appendChild(sum);
+      }
       item.appendChild(head);
 
       if (entry.note) {
-        const note = document.createElement("p");
-        note.className = "muted small";
-        note.style.margin = "0";
-        note.textContent = `Σημείωση μήνα: “${entry.note}”`;
-        item.appendChild(note);
+        const wish = document.createElement("p");
+        wish.className = "wish";
+        wish.textContent = `“${entry.note}”`;
+        item.appendChild(wish);
       }
+
+      if (keys.length) {
+        const rows = document.createElement("div");
+        rows.className = "who-list";
+        for (const key of keys) {
+          const row = document.createElement("div");
+          row.className = "who";
+          row.appendChild(chip(days[key].kind, `<b>${dayShort(key)}</b> · ${shortOf(days[key])}`));
+          if (days[key].note) {
+            const why = document.createElement("span");
+            why.className = "why";
+            why.textContent = days[key].note;
+            row.appendChild(why);
+          }
+          rows.appendChild(row);
+        }
+        item.appendChild(rows);
+      } else if (!entry.note) {
+        const none = document.createElement("p");
+        none.className = "empty";
+        none.style.margin = "0";
+        none.textContent = "Δεν δήλωσε τίποτα για αυτόν τον μήνα.";
+        item.appendChild(none);
+      }
+
       box.appendChild(item);
     }
-
-    if (!shown) box.innerHTML = '<p class="empty">Καμία καταχώρηση.</p>';
   }
 
   function renderAdmin() {
@@ -621,7 +650,7 @@
     renderCalendar($("calendar"), false);
     renderMyList();
     renderAllDays();
-    renderAllPeople();
+    renderPeople();
     if (state.me.role === "admin") renderAdmin();
   }
 
@@ -785,6 +814,7 @@
     }
     $("view-mine").hidden = view !== "mine";
     $("view-all").hidden = view !== "all";
+    $("view-people").hidden = view !== "people";
     $("view-admin").hidden = view !== "admin";
   }
 

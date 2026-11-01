@@ -175,8 +175,10 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
   border: 0;
   border-bottom: 3px solid transparent;
   border-radius: 8px 8px 0 0;
-  padding: .5rem .3rem;
-  font-size: .9rem;
+  padding: .5rem .2rem;
+  /* Με τέσσερις καρτέλες σε οθόνη κινητού τα γράμματα πρέπει να χωρέσουν. */
+  font-size: .8rem;
+  line-height: 1.2;
 }
 .tab.is-on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
 
@@ -300,6 +302,15 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
 
 /* Ένα αίτημα: η ετικέτα και από κάτω ο λόγος με τα λόγια του εργαζόμενου. */
 .who-list { display: flex; flex-direction: column; gap: .5rem; }
+/* Τι θέλει γενικά ο εργαζόμενος αυτόν τον μήνα — το πιο σημαντικό για το
+   αφεντικό, γι' αυτό δεν είναι ξεθωριασμένο. */
+.wish {
+  margin: .1rem 0 .6rem;
+  padding-left: .6rem;
+  border-left: 3px solid var(--accent);
+  font-size: .92rem;
+}
+
 .who .why {
   display: block;
   margin: .2rem 0 0 .2rem;
@@ -370,6 +381,7 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
   .sheet-box { border-radius: var(--radius); }
   .day .num { font-size: 1.1rem; }
   .tabs { top: 65px; }
+  .tab { font-size: .95rem; padding: .5rem .4rem; }
   /* Σε μεγάλη οθόνη το ημερολόγιο δεν χρειάζεται να απλώνεται όσο η σελίδα —
      τα τετράγωνα θα γίνονταν τεράστια. */
   .calendar { max-width: 520px; margin-inline: auto; }
