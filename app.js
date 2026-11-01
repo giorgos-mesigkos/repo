@@ -305,7 +305,12 @@
       ? `${state.me.name} · διαχειριστής`
       : state.me.name;
     const isAdmin = state.me.role === "admin";
+    // Τα μόνιμα στοιχεία όλων τα βλέπει το αφεντικό και όποιος φτιάχνει το
+    // πρόγραμμα. Ο διακομιστής ούτως ή άλλως δεν τα στέλνει στους υπόλοιπους.
+    const seesPeople = isAdmin || state.me.role === "planner";
+    document.querySelector('[data-view="people"]').hidden = !seesPeople;
     document.querySelector('[data-view="admin"]').hidden = !isAdmin;
+    if (!seesPeople && state.view === "people") setView("mine");
     if (!isAdmin) {
       // Αν πριν ήταν συνδεδεμένος ο υπεύθυνος στην ίδια συσκευή, δεν αφήνουμε
       // τα δικά του πράγματα στη σελίδα.
@@ -622,7 +627,8 @@
     renderCalendar($("calendar"), false);
     renderMyList();
     renderAllDays();
-    renderPeople();
+    if (state.data.canSeePeople) renderPeople();
+    else $("people-list").innerHTML = "";
     if (state.me.role === "admin") renderAdmin();
   }
 

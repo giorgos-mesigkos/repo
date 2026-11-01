@@ -159,14 +159,35 @@
   }
 
   /** Η κοινή απάντηση μετά από κάθε αλλαγή: όλος ο μήνας, φρέσκος. */
-  async function monthReply(ctx, month, data) {
+  /**
+   * Ποιος βλέπει τα μόνιμα στοιχεία ΟΛΩΝ: η διεύθυνση και όποιος έχει
+   * αναλάβει να φτιάξει το πρόγραμμα.
+   */
+  function canSeePeople(person) {
+    return person.role === "admin" || person.role === "planner";
+  }
+
+  /**
+   * Τα μόνιμα στοιχεία που επιτρέπεται να φτάσουν σε αυτό το άτομο.
+   * Ο απλός εργαζόμενος παίρνει ΜΟΝΟ τα δικά του — τα χρειάζεται για να τα
+   * δει και να τα αλλάξει. Το φιλτράρισμα γίνεται εδώ και όχι στη σελίδα:
+   * αλλιώς θα έφταναν στο κινητό του και ας μην του τα δείχναμε.
+   */
+  async function peopleFor(ctx, person) {
+    const all = await loadPeople(ctx);
+    if (canSeePeople(person)) return all;
+    return all[person.id] ? { [person.id]: all[person.id] } : {};
+  }
+
+  async function monthReply(ctx, month, data, person) {
     return ok({
       month,
       lockedDays: data.lockedDays,
       entries: data.entries,
       // Τα μόνιμα πάνε μαζί σε κάθε απάντηση: η σελίδα τα χρειάζεται πάντα
       // και δεν αλλάζουν ανά μήνα.
-      people: await loadPeople(ctx),
+      people: await peopleFor(ctx, person),
+      canSeePeople: canSeePeople(person),
       staff: staffIndex(ctx.company),
       today: todayKey(),
       closed: deadlinePassed(ctx.company, month),
@@ -197,10 +218,10 @@
   }
 
   /** Ο πίνακας ενός μήνα — όλα τα αιτήματα όλων. Τον βλέπει κάθε συνδεδεμένος. */
-  async function month(ctx, body) {
+  async function month(ctx, body, person) {
     const m = typeof body.month === "string" ? body.month : "";
     if (!MONTH_KEY.test(m)) return fail(400, "Λάθος μήνας.");
-    return monthReply(ctx, m, await loadMonth(ctx, m));
+    return monthReply(ctx, m, await loadMonth(ctx, m), person);
   }
 
   /**
@@ -264,7 +285,7 @@
     entry.updatedAt = new Date().toISOString();
     data.entries[targetId] = entry;
     await saveMonth(ctx, m, data);
-    return monthReply(ctx, m, data);
+    return monthReply(ctx, m, data, person);
   }
 
   /**
@@ -282,7 +303,7 @@
     };
     await savePeople(ctx, people);
     // Γυρνάμε τον μήνα που κοιτάει η σελίδα, για να ανανεωθεί ολόκληρη.
-    return monthReply(ctx, month, await loadMonth(ctx, month));
+    return monthReply(ctx, month, await loadMonth(ctx, month), person);
   }
 
   /** Κλείδωμα / ξεκλείδωμα μέρας για όλους. Μόνο ο διαχειριστής. */
@@ -299,7 +320,7 @@
       delete data.lockedDays[day];
     }
     await saveMonth(ctx, m, data);
-    return monthReply(ctx, m, data);
+    return monthReply(ctx, m, data, person);
   }
 
   const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay };
