@@ -8,7 +8,7 @@
  */
 
 const crypto = require("crypto");
-const { getStore } = require("@netlify/blobs");
+const { connectLambda, getStore } = require("@netlify/blobs");
 const { COMPANY } = require("../../company-data.js");
 const rules = require("../../engine/rules.js");
 
@@ -40,6 +40,12 @@ const json = (status, body) => ({
 });
 
 exports.handler = async (event) => {
+  // Σε αυτή τη μορφή function τα Netlify Blobs ΔΕΝ ρυθμίζονται μόνα τους:
+  // πρέπει να τους δώσουμε το event πριν ζητήσουμε την αποθήκευση. Χωρίς
+  // αυτή τη γραμμή κάθε διάβασμα σκάει με «The environment has not been
+  // configured to use Netlify Blobs».
+  connectLambda(event);
+
   if (event.httpMethod !== "POST") return json(405, { error: "Μόνο POST." });
 
   if (!SECRET) {
