@@ -414,10 +414,30 @@
     return el;
   }
 
-  function describe(d) {
-    if (d.kind === "off") return `<b>ΡΕΠΟ</b>${d.note ? ` · ${escape(d.note)}` : ""}`;
-    if (d.kind === "limited") return `<b>${d.from}–${d.to}</b>${d.note ? ` · ${escape(d.note)}` : ""}`;
-    return escape(d.note || "σημείωση");
+  /** Το σύντομο: τι ζήτησε. Μπαίνει μέσα στην ετικέτα. */
+  function shortOf(d) {
+    if (d.kind === "off") return "ΡΕΠΟ";
+    if (d.kind === "limited") return `${d.from}–${d.to}`;
+    return "σημείωση";
+  }
+
+  /**
+   * Μία γραμμή: ετικέτα με το τι ζήτησε, και από κάτω ο λόγος με δικά του
+   * λόγια. Ο λόγος μπαίνει ξεχωριστά και όχι μέσα στην ετικέτα, γιατί σε
+   * κινητό μια ολόκληρη πρόταση μέσα σε στρογγυλή ετικέτα γίνεται δυσανάγνωστη.
+   */
+  function requestRow(d, who) {
+    const row = document.createElement("div");
+    row.className = "who";
+    const label = who ? `<b>${escape(who)}</b> · ${shortOf(d)}` : `<b>${shortOf(d)}</b>`;
+    row.appendChild(chip(d.kind, label));
+    if (d.note) {
+      const why = document.createElement("span");
+      why.className = "why";
+      why.textContent = d.note;
+      row.appendChild(why);
+    }
+    return row;
   }
 
   function escape(text) {
@@ -451,10 +471,7 @@
       edit.addEventListener("click", () => openSheet(key, false));
       head.appendChild(edit);
       item.appendChild(head);
-      const chips = document.createElement("div");
-      chips.className = "chips";
-      chips.appendChild(chip(d.kind, describe(d)));
-      item.appendChild(chips);
+      item.appendChild(requestRow(d, ""));
       box.appendChild(item);
     }
   }
@@ -486,13 +503,18 @@
       head.appendChild(count);
       item.appendChild(head);
 
-      const chips = document.createElement("div");
-      chips.className = "chips";
-      if (facts.locked) chips.appendChild(chip("locked", `🔒 ${escape(facts.locked)}`));
-      for (const entry of facts.all) {
-        chips.appendChild(chip(entry.kind, `${escape(nameOf(entry.id))}: ${describe(entry)}`));
+      const rows = document.createElement("div");
+      rows.className = "who-list";
+      if (facts.locked) {
+        const locked = document.createElement("div");
+        locked.className = "who";
+        locked.appendChild(chip("locked", `🔒 ${escape(facts.locked)}`));
+        rows.appendChild(locked);
       }
-      item.appendChild(chips);
+      for (const entry of facts.all) {
+        rows.appendChild(requestRow(entry, nameOf(entry.id)));
+      }
+      item.appendChild(rows);
       box.appendChild(item);
     }
 
@@ -535,7 +557,7 @@
         const note = document.createElement("p");
         note.className = "muted small";
         note.style.margin = "0";
-        note.textContent = `“${entry.note}”`;
+        note.textContent = `Σημείωση μήνα: “${entry.note}”`;
         item.appendChild(note);
       }
       box.appendChild(item);
@@ -578,7 +600,16 @@
     $("month-label").textContent = monthLabel(state.month);
 
     const entry = (state.data.entries && state.data.entries[state.me.id]) || {};
-    $("my-note").value = entry.note || "";
+
+    // Η σημείωση του μήνα θέλει ξεχωριστό πάτημα για να αποθηκευτεί. Αν ο
+    // χρήστης έχει ήδη γράψει κάτι και δεν το έχει αποθηκεύσει, ΔΕΝ του το
+    // σβήνουμε επειδή έτυχε να ξαναζωγραφιστεί η σελίδα (π.χ. μόλις
+    // καταχώρησε μια μέρα) — αλλιώς χάνει ό,τι έγραψε χωρίς να το καταλάβει.
+    const noteBox = $("my-note");
+    const savedNote = entry.note || "";
+    if (noteBox.value === (noteBox.dataset.saved || "")) noteBox.value = savedNote;
+    noteBox.dataset.saved = savedNote;
+    showNoteState();
 
     const closed = state.data.closed && state.me.role !== "admin";
     $("my-note").disabled = closed;
@@ -721,10 +752,21 @@
     }
   }
 
+  /** Δείχνει την προειδοποίηση όσο η σημείωση του μήνα είναι αναποθήκευτη. */
+  function showNoteState() {
+    const box = $("my-note");
+    $("note-unsaved").hidden = box.value === (box.dataset.saved || "");
+  }
+
   async function saveMyNote() {
     $("save-note").disabled = true;
     try {
       state.data = await api("saveNote", { month: state.month, note: $("my-note").value });
+      // Δείχνουμε ακριβώς ό,τι αποθηκεύτηκε, ώστε να μη μείνει η σελίδα να λέει
+      // "αναποθήκευτο" για ένα κενό που κόπηκε στο καθάρισμα.
+      const stored = ((state.data.entries || {})[state.me.id] || {}).note || "";
+      $("my-note").value = stored;
+      $("my-note").dataset.saved = stored;
       render();
       say("Η σημείωση αποθηκεύτηκε.");
     } catch (e) {
@@ -803,6 +845,7 @@
     });
 
     $("save-note").addEventListener("click", saveMyNote);
+    $("my-note").addEventListener("input", showNoteState);
   }
 
   /* ---------------- ξεκίνημα ---------------- */

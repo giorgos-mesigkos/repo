@@ -81,9 +81,13 @@
     </ul>
 
     <section class="block">
-      <h2>Σημείωση για τον μήνα</h2>
+      <h2>Σημείωση για όλον τον μήνα</h2>
+      <p class="muted small">Γενικό μήνυμα προς τη διεύθυνση. Αν θέλεις να πεις
+        <b>γιατί</b> ζητάς μια συγκεκριμένη μέρα, γράψ' το μέσα στη μέρα —
+        εκεί το βλέπουν όλοι δίπλα στο αίτημα.</p>
       <textarea id="my-note" rows="3" maxlength="400"
-        placeholder="Ό,τι θέλεις να ξέρει η διεύθυνση (π.χ. «μπορώ απογεύματα όλο τον μήνα»)."></textarea>
+        placeholder="π.χ. «όλο τον μήνα μπορώ μόνο απογεύματα»."></textarea>
+      <p id="note-unsaved" class="error small" hidden>Δεν αποθηκεύτηκε ακόμα — πάτα «Αποθήκευση σημείωσης».</p>
       <button id="save-note" class="primary">Αποθήκευση σημείωσης</button>
     </section>
 
@@ -142,8 +146,9 @@
     </div>
 
     <div class="field" id="sheet-note-row">
-      <label for="sheet-note">Σημείωση <span class="muted small">(προαιρετικά)</span></label>
-      <input id="sheet-note" type="text" maxlength="120" placeholder="π.χ. γιατρός">
+      <label for="sheet-note">Ο λόγος <span class="muted small">(τον βλέπουν όλοι)</span></label>
+      <textarea id="sheet-note" class="note-small" rows="2" maxlength="200"
+        placeholder="π.χ. πέθανε η γάτα μου και θέλω να τη θάψω"></textarea>
     </div>
 
     <div id="sheet-lock" class="field" hidden>

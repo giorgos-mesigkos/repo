@@ -297,6 +297,15 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
 }
 .item-head .date { font-weight: 600; text-transform: capitalize; }
 .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+/* Ένα αίτημα: η ετικέτα και από κάτω ο λόγος με τα λόγια του εργαζόμενου. */
+.who-list { display: flex; flex-direction: column; gap: .5rem; }
+.who .why {
+  display: block;
+  margin: .2rem 0 0 .2rem;
+  font-size: .85rem;
+  color: var(--muted);
+}
 .chip {
   display: inline-flex;
   align-items: center;
@@ -365,3 +374,6 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
      τα τετράγωνα θα γίνονταν τεράστια. */
   .calendar { max-width: 520px; margin-inline: auto; }
 }
+
+/* Ο λόγος μέσα στο παράθυρο της μέρας: χαμηλό πλαίσιο, χωρεί μια πρόταση. */
+textarea.note-small { min-height: 56px; }

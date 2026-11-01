@@ -227,15 +227,15 @@
     if (kind === "clear") {
       delete entry.days[day];
     } else if (kind === "off") {
-      entry.days[day] = { kind: "off", note: clean(body.note, 120) };
+      entry.days[day] = { kind: "off", note: clean(body.note, 200) };
     } else if (kind === "limited") {
       const from = typeof body.from === "string" ? body.from : "";
       const to = typeof body.to === "string" ? body.to : "";
       if (!TIME.test(from) || !TIME.test(to)) return fail(400, "Συμπλήρωσε ώρα από και έως.");
       if (from === to) return fail(400, "Οι δύο ώρες είναι ίδιες.");
-      entry.days[day] = { kind: "limited", from, to, note: clean(body.note, 120) };
+      entry.days[day] = { kind: "limited", from, to, note: clean(body.note, 200) };
     } else if (kind === "note") {
-      const note = clean(body.note, 120);
+      const note = clean(body.note, 200);
       if (!note) return fail(400, "Γράψε τη σημείωση.");
       entry.days[day] = { kind: "note", note };
     } else {
