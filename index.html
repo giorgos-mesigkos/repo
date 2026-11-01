@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#111827">
+
+<!-- Το μόνο που μπορεί να θέλεις να αλλάξεις εδώ είναι ο τίτλος της καρτέλας.
+     Όλα τα υπόλοιπα (όνομα, χρώματα, προσωπικό) είναι στο company-data.js. -->
+<title>Πρόγραμμα προσωπικού</title>
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ ΟΘΟΝΗ ΣΥΝΔΕΣΗΣ ============ -->
+<section id="login" class="login" hidden>
+  <div class="login-card">
+    <h1 id="login-brand">—</h1>
+    <p id="login-tagline" class="muted"></p>
+
+    <label for="login-staff">Ποιος είσαι;</label>
+    <select id="login-staff" autocomplete="off"></select>
+
+    <label for="login-pin">PIN (4 ψηφία)</label>
+    <input id="login-pin" type="password" inputmode="numeric" autocomplete="off"
+           maxlength="4" pattern="[0-9]*" placeholder="••••">
+
+    <button id="login-go" class="primary big">Σύνδεση</button>
+    <p id="login-error" class="error" role="alert" hidden></p>
+    <p id="login-note" class="muted small"></p>
+  </div>
+</section>
+
+<!-- ============ Η ΕΦΑΡΜΟΓΗ ============ -->
+<div id="app" hidden>
+
+  <header class="top">
+    <div>
+      <strong id="top-brand">—</strong>
+      <span id="top-me" class="muted small"></span>
+    </div>
+    <button id="logout" class="ghost small">Έξοδος</button>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-on" data-view="mine" role="tab">Τα δικά μου</button>
+    <button class="tab" data-view="all" role="tab">Ο μήνας όλων</button>
+    <button class="tab" data-view="admin" role="tab" hidden>Διαχείριση</button>
+  </nav>
+
+  <div class="month-bar">
+    <button id="month-prev" class="ghost" aria-label="Προηγούμενος μήνας">‹</button>
+    <strong id="month-label">—</strong>
+    <button id="month-next" class="ghost" aria-label="Επόμενος μήνας">›</button>
+  </div>
+
+  <p id="status" class="status" hidden></p>
+
+  <!-- ---- Τα δικά μου: ημερολόγιο + σημείωση ---- -->
+  <main id="view-mine" class="view">
+    <p id="intro" class="muted small"></p>
+    <div id="calendar" class="calendar"></div>
+    <ul class="legend">
+      <li><i class="sw off"></i> ρεπό</li>
+      <li><i class="sw limited"></i> μόνο ώρες</li>
+      <li><i class="sw note"></i> σημείωση</li>
+      <li><i class="sw locked"></i> κλειδωμένη</li>
+      <li><i class="sw busy"></i> πιασμένη μέρα</li>
+    </ul>
+
+    <section class="block">
+      <h2>Σημείωση για τον μήνα</h2>
+      <textarea id="my-note" rows="3" maxlength="400"
+        placeholder="Ό,τι θέλεις να ξέρει η διεύθυνση (π.χ. «μπορώ απογεύματα όλο τον μήνα»)."></textarea>
+      <button id="save-note" class="primary">Αποθήκευση σημείωσης</button>
+    </section>
+
+    <section class="block">
+      <h2>Τα αιτήματά μου</h2>
+      <div id="my-list" class="list"></div>
+    </section>
+  </main>
+
+  <!-- ---- Ο μήνας όλων ---- -->
+  <main id="view-all" class="view" hidden>
+    <p class="muted small">Όλα τα αιτήματα του μήνα, μέρα προς μέρα. Οι μέρες χωρίς αίτημα δεν εμφανίζονται.</p>
+    <div id="all-days" class="list"></div>
+    <section class="block">
+      <h2>Σύνολα ανά άτομο</h2>
+      <div id="all-people" class="list"></div>
+    </section>
+  </main>
+
+  <!-- ---- Διαχείριση (μόνο για admin) ---- -->
+  <main id="view-admin" class="view" hidden>
+    <section class="block">
+      <h2>Κλείδωμα ημερών</h2>
+      <p class="muted small">Κλειδωμένη μέρα = κανείς δεν μπορεί να δηλώσει αίτημα για εκείνη τη μέρα
+        (π.χ. αργία, γεμάτο βιβλίο). Πάτα μια μέρα στο ημερολόγιο.</p>
+      <div id="admin-calendar" class="calendar"></div>
+      <div id="admin-locked" class="list"></div>
+    </section>
+    <section class="block">
+      <h2>Προθεσμία</h2>
+      <p id="admin-deadline" class="muted small"></p>
+    </section>
+  </main>
+</div>
+
+<!-- ============ ΠΑΡΑΘΥΡΟ ΜΕΡΑΣ ============ -->
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <h2 id="sheet-title">—</h2>
+    <p id="sheet-info" class="muted small"></p>
+
+    <div id="sheet-staff-row" class="field" hidden>
+      <label for="sheet-staff">Για ποιον;</label>
+      <select id="sheet-staff"></select>
+    </div>
+
+    <div id="sheet-kinds" class="kinds">
+      <button class="kind" data-kind="off">Ρεπό<small>όλη τη μέρα</small></button>
+      <button class="kind" data-kind="limited">Μόνο ώρες<small>από–έως</small></button>
+      <button class="kind" data-kind="note">Σημείωση<small>χωρίς αίτημα</small></button>
+    </div>
+
+    <div id="sheet-hours" class="field two" hidden>
+      <div><label for="sheet-from">Από</label><input id="sheet-from" type="time" step="900"></div>
+      <div><label for="sheet-to">Έως</label><input id="sheet-to" type="time" step="900"></div>
+    </div>
+
+    <div class="field">
+      <label for="sheet-note">Σημείωση <span class="muted small">(προαιρετικά)</span></label>
+      <input id="sheet-note" type="text" maxlength="120" placeholder="π.χ. γιατρός">
+    </div>
+
+    <div id="sheet-lock" class="field" hidden>
+      <label for="sheet-reason">Κλείδωμα μέρας για όλους</label>
+      <input id="sheet-reason" type="text" maxlength="60" placeholder="Λόγος (π.χ. Αργία)">
+      <div class="row">
+        <button id="sheet-do-lock" class="primary">Κλείδωσε τη μέρα</button>
+        <button id="sheet-do-unlock" class="ghost">Ξεκλείδωσε</button>
+      </div>
+    </div>
+
+    <p id="sheet-error" class="error" role="alert" hidden></p>
+
+    <div class="row sheet-actions">
+      <button id="sheet-save" class="primary">Αποθήκευση</button>
+      <button id="sheet-clear" class="ghost">Σβήσε το αίτημα</button>
+      <button id="sheet-close" class="ghost">Κλείσιμο</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

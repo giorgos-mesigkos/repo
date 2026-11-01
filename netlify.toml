@@ -1,0 +1,45 @@
+# Ρυθμίσεις Netlify. Δεν χρειάζεται αλλαγή ανά επιχείρηση.
+
+[build]
+  publish = "publish"
+  functions = "netlify/functions"
+  # Δημοσιεύονται ΜΟΝΟ τα τρία αρχεία της σελίδας.
+  # Το company-data.js ΔΕΝ ανεβαίνει ποτέ: περιέχει τα PIN. Το διαβάζει
+  # μόνο η function, στον διακομιστή. Αν το βάλεις εδώ, τα PIN γίνονται
+  # ορατά σε όποιον κάνει "προβολή κώδικα" στο κινητό του.
+  command = """
+    rm -rf publish && mkdir -p publish &&
+    cp index.html app.js styles.css publish/
+  """
+
+# Η σελίδα μιλάει πάντα στο /api· εδώ πάει στη function.
+[[redirects]]
+  from = "/api"
+  to = "/.netlify/functions/api"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Πρόγραμμα προσωπικού — δεν θέλουμε να βγαίνει στο Google.
+    X-Robots-Tag = "noindex, nofollow"
+
+# Τα τρία αρχεία αλλάζουν όποτε βελτιώνεται η εφαρμογή — να ελέγχονται
+# πάντα για νεότερη έκδοση, ώστε να μη μείνει κανείς σε παλιά.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/styles.css"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
