@@ -4,7 +4,7 @@
     {
       "name": "shift-planner",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8787", "-d", "C:/Users/giorg/Desktop/shift-planner"],
+      "runtimeArgs": ["-m", "http.server", "8787"],
       "port": 8787
     }
   ]
