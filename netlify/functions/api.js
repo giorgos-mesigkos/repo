@@ -18,12 +18,18 @@ const SECRET = process.env.SHIFT_SECRET || (COMPANY.security && COMPANY.security
 
 // Netlify Blobs: δωρεάν αποθήκευση που έρχεται μαζί με το site. Δεν θέλει
 // στήσιμο ούτε νέο λογαριασμό — αρκεί το site να είναι στο Netlify.
+// consistency: "strong" σημαίνει «δώσε μου πάντα την τελευταία εικόνα».
+// Χωρίς αυτό το Netlify απαντάει γρήγορα αλλά μπορεί να δώσει παλιά
+// δεδομένα για λίγη ώρα: ο ένας θα καταχωρούσε ρεπό και ο άλλος, από άλλο
+// κινητό, δεν θα το έβλεπε — ή θα έσβηνε την καταχώρηση του πρώτου.
+const blobs = () => getStore({ name: "shift-planner", consistency: "strong" });
+
 const store = {
   async get(key) {
-    return getStore("shift-planner").get(key, { type: "text" });
+    return blobs().get(key, { type: "text" });
   },
   async set(key, value) {
-    await getStore("shift-planner").set(key, value);
+    await blobs().set(key, value);
   },
 };
 
@@ -66,10 +72,6 @@ exports.handler = async (event) => {
     // Το σφάλμα μένει στα logs του Netlify. Στον χρήστη λέμε κάτι κατανοητό,
     // χωρίς τεχνικές λεπτομέρειες.
     console.error("shift-planner:", err);
-    return json(500, {
-      error: "Κάτι πήγε λάθος στον διακομιστή. Δοκίμασε ξανά.",
-      // ΠΡΟΣΩΡΙΝΟ, για εντοπισμό προβλήματος στο πρώτο ανέβασμα. Να φύγει.
-      detail: String((err && err.message) || err),
-    });
+    return json(500, { error: "Κάτι πήγε λάθος στον διακομιστή. Δοκίμασε ξανά." });
   }
 };
