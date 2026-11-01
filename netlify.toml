@@ -8,9 +8,10 @@
   # μόνο η function, στον διακομιστή. Αν το βάλεις εδώ, τα PIN γίνονται
   # ορατά σε όποιον κάνει "προβολή κώδικα" στο κινητό του.
   command = """
-    rm -rf publish && mkdir -p publish/engine &&
+    rm -rf publish && mkdir -p publish/engine publish/assets &&
     cp index.html app.js styles.css demo-data.js publish/ &&
-    cp engine/rules.js publish/engine/
+    cp engine/rules.js publish/engine/ &&
+    cp -r assets/. publish/assets/ 2>/dev/null || true
   """
 
 # Η σελίδα μιλάει πάντα στο /api· εδώ πάει στη function.
@@ -30,6 +31,12 @@
 
 # Τα αρχεία της σελίδας αλλάζουν όποτε βελτιώνεται η εφαρμογή — να ελέγχονται
 # πάντα για νεότερη έκδοση, ώστε να μη μείνει κανείς σε παλιά.
+# Τα λογότυπα αλλάζουν σπάνια — ας τα κρατάει ο browser.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000"
+
 [[headers]]
   for = "/index.html"
   [headers.values]

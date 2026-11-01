@@ -198,6 +198,20 @@
     $("login-brand").textContent = name;
     $("top-brand").textContent = name;
     $("login-tagline").textContent = (cfg.brand && cfg.brand.tagline) || "";
+
+    // Λογότυπο: αν δεν έχει οριστεί, μένει κρυφό και φαίνεται μόνο το όνομα.
+    const logo = (cfg.brand && cfg.brand.logo) || "";
+    for (const id of ["login-logo", "top-logo"]) {
+      const el = $(id);
+      if (logo) {
+        el.src = logo;
+        el.alt = name;
+        el.hidden = false;
+      } else {
+        el.hidden = true;
+      }
+    }
+
     $("login-note").textContent = (cfg.copy && cfg.copy.loginNote) || "";
     $("intro").textContent = (cfg.copy && cfg.copy.intro) || "";
 

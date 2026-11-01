@@ -136,6 +136,27 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
 }
 .top strong { display: block; }
 .top span { display: block; }
+.top-id { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+
+/* ---------- λογότυπο ----------
+   Μπαίνει από το company-data.js (brand.logo). Αν λείπει, η σελίδα δείχνει
+   μόνο το όνομα — δεν χαλάει τίποτα. */
+
+.logo-big {
+  display: block;
+  width: 68px;
+  height: 68px;
+  border-radius: 16px;
+  margin: 0 0 .8rem;
+  object-fit: contain;
+}
+.logo-small {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  object-fit: contain;
+}
 
 .tabs {
   display: flex;

@@ -1,0 +1,10 @@
+<!-- Ουδέτερο λογότυπο για νέα επιχείρηση.
+     Αντικατάστησέ το με το λογότυπο του πελάτη (PNG ή SVG) και άλλαξε
+     τη διαδρομή στο company-data.js → brand.logo. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Λογότυπο επιχείρησης">
+  <rect width="120" height="120" rx="28" fill="#2563eb"/>
+  <path d="M42 24v18M78 24v18" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <rect x="26" y="34" width="68" height="60" rx="12" fill="#ffffff"/>
+  <path d="M26 52h68" stroke="#bfdbfe" stroke-width="8"/>
+  <path d="M44 72l10 11 22-24" fill="none" stroke="#2563eb" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
