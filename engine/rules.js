@@ -99,6 +99,22 @@
     await ctx.store.set(`month-${month}`, JSON.stringify(data));
   }
 
+  /* ---------------- Μόνιμα στοιχεία εργαζομένων ----------------
+     Ό,τι ισχύει για κάθε μήνα: «θέλω μόνο 2 δωδεκάωρα και 3 πρωινά».
+     Γράφεται μία φορά και μένει — δεν ξαναγράφεται κάθε μήνα. Γι' αυτό
+     αποθηκεύεται χωριστά από τα αιτήματα του μήνα. */
+
+  async function loadPeople(ctx) {
+    const raw = await ctx.store.get("people");
+    if (!raw) return {};
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return data && typeof data === "object" ? data : {};
+  }
+
+  async function savePeople(ctx, data) {
+    await ctx.store.set("people", JSON.stringify(data));
+  }
+
   /**
    * Έχει περάσει η προθεσμία για τον μήνα αυτόν;
    * Η προθεσμία είναι η <deadlineDayOfPreviousMonth> του προηγούμενου μήνα.
@@ -143,11 +159,14 @@
   }
 
   /** Η κοινή απάντηση μετά από κάθε αλλαγή: όλος ο μήνας, φρέσκος. */
-  function monthReply(ctx, month, data) {
+  async function monthReply(ctx, month, data) {
     return ok({
       month,
       lockedDays: data.lockedDays,
       entries: data.entries,
+      // Τα μόνιμα πάνε μαζί σε κάθε απάντηση: η σελίδα τα χρειάζεται πάντα
+      // και δεν αλλάζουν ανά μήνα.
+      people: await loadPeople(ctx),
       staff: staffIndex(ctx.company),
       today: todayKey(),
       closed: deadlinePassed(ctx.company, month),
@@ -220,7 +239,7 @@
       return fail(403, "Η μέρα είναι κλειδωμένη από τη διεύθυνση.");
     }
 
-    const entry = data.entries[targetId] || { days: {}, note: "", updatedAt: "" };
+    const entry = data.entries[targetId] || { days: {}, updatedAt: "" };
     entry.days = entry.days || {};
 
     const kind = body.kind;
@@ -248,20 +267,22 @@
     return monthReply(ctx, m, data);
   }
 
-  /** Η ελεύθερη σημείωση του εργαζόμενου για όλον τον μήνα. */
-  async function saveNote(ctx, body, person) {
-    const m = typeof body.month === "string" ? body.month : "";
-    if (!MONTH_KEY.test(m)) return fail(400, "Λάθος μήνας.");
-    if (person.role !== "admin" && deadlinePassed(ctx.company, m)) {
-      return fail(403, "Η προθεσμία για αυτόν τον μήνα έχει περάσει.");
-    }
-    const data = await loadMonth(ctx, m);
-    const entry = data.entries[person.id] || { days: {}, note: "", updatedAt: "" };
-    entry.note = clean(body.note, 400);
-    entry.updatedAt = new Date().toISOString();
-    data.entries[person.id] = entry;
-    await saveMonth(ctx, m, data);
-    return monthReply(ctx, m, data);
+  /**
+   * Τα μόνιμα του εργαζόμενου: τι θέλει γενικά, για κάθε μήνα.
+   * Δεν δεσμεύεται από προθεσμία — δεν αφορά συγκεκριμένο μήνα.
+   */
+  async function saveProfile(ctx, body, person) {
+    const month = typeof body.month === "string" ? body.month : "";
+    if (!MONTH_KEY.test(month)) return fail(400, "Λάθος μήνας.");
+
+    const people = await loadPeople(ctx);
+    people[person.id] = {
+      note: clean(body.note, 400),
+      updatedAt: new Date().toISOString(),
+    };
+    await savePeople(ctx, people);
+    // Γυρνάμε τον μήνα που κοιτάει η σελίδα, για να ανανεωθεί ολόκληρη.
+    return monthReply(ctx, month, await loadMonth(ctx, month));
   }
 
   /** Κλείδωμα / ξεκλείδωμα μέρας για όλους. Μόνο ο διαχειριστής. */
@@ -281,7 +302,7 @@
     return monthReply(ctx, m, data);
   }
 
-  const NEEDS_LOGIN = { month, saveDay, saveNote, lockDay };
+  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay };
 
   /**
    * Το μοναδικό σημείο εισόδου.

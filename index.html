@@ -57,7 +57,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab is-on" data-view="mine" role="tab">Τα δικά μου</button>
     <button class="tab" data-view="all" role="tab">Μέρα-μέρα</button>
-    <button class="tab" data-view="people" role="tab">Ανά άτομο</button>
+    <button class="tab" data-view="people" role="tab">Εργαζόμενοι</button>
     <button class="tab" data-view="admin" role="tab" hidden>Διαχείριση</button>
   </nav>
 
@@ -82,14 +82,15 @@
     </ul>
 
     <section class="block">
-      <h2>Τι θέλω γενικά αυτόν τον μήνα</h2>
-      <p class="muted small">Ό,τι αφορά όλον τον μήνα και όχι συγκεκριμένη μέρα.
-        Το διαβάζει η διεύθυνση όταν φτιάχνει το πρόγραμμα. Αν θέλεις να πεις
+      <h2>Τι θέλω γενικά</h2>
+      <p class="muted small">Γράφεται <b>μία φορά</b> και ισχύει για κάθε μήνα,
+        μέχρι να το αλλάξεις. Το βλέπουν όλοι στην καρτέλα «Εργαζόμενοι» και το
+        διαβάζει η διεύθυνση όταν φτιάχνει το πρόγραμμα. Αν θέλεις να πεις
         <b>γιατί</b> ζητάς μια συγκεκριμένη μέρα, γράψ' το μέσα στη μέρα.</p>
       <textarea id="my-note" rows="3" maxlength="400"
         placeholder="π.χ. «θέλω μόνο 2 δωδεκάωρα και 3 πρωινά» ή «μπορώ μόνο απογεύματα»."></textarea>
-      <p id="note-unsaved" class="error small" hidden>Δεν αποθηκεύτηκε ακόμα — πάτα «Αποθήκευση σημείωσης».</p>
-      <button id="save-note" class="primary">Αποθήκευση σημείωσης</button>
+      <p id="note-unsaved" class="error small" hidden>Δεν αποθηκεύτηκε ακόμα — πάτα «Αποθήκευση».</p>
+      <button id="save-note" class="primary">Αποθήκευση</button>
     </section>
 
     <section class="block">
@@ -104,10 +105,11 @@
     <div id="all-days" class="list"></div>
   </main>
 
-  <!-- ---- Ανά άτομο: τι θέλει ο καθένας, μαζεμένο ---- -->
+  <!-- ---- Εργαζόμενοι: τι θέλει ο καθένας, μόνιμα ---- -->
   <main id="view-people" class="view" hidden>
-    <p class="muted small">Όλο το προσωπικό και τι ζήτησε ο καθένας αυτόν τον
-      μήνα — για να φτιαχτεί το πρόγραμμα χωρίς να ψάχνει κανείς μέρα-μέρα.</p>
+    <p class="muted small">Τι θέλει ο καθένας γενικά, <b>για κάθε μήνα</b>.
+      Δεν αλλάζει όταν αλλάζεις μήνα — ισχύει μέχρι να το αλλάξει ο ίδιος.
+      Τα αιτήματα για συγκεκριμένες μέρες είναι στο «Μέρα-μέρα».</p>
     <div id="people-list" class="list"></div>
   </main>
 

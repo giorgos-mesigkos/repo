@@ -534,14 +534,10 @@
   function renderPeople() {
     const box = $("people-list");
     box.innerHTML = "";
-    const entries = state.data.entries || {};
+    const people = state.data.people || {};
 
     for (const p of state.cfg.staff) {
-      const entry = entries[p.id] || {};
-      const days = entry.days || {};
-      const keys = Object.keys(days).sort();
-      const offs = keys.filter((k) => days[k].kind === "off").length;
-      const lims = keys.filter((k) => days[k].kind === "limited").length;
+      const note = (people[p.id] && people[p.id].note) || "";
 
       const item = document.createElement("div");
       item.className = "item";
@@ -552,42 +548,18 @@
       who.className = "date";
       who.textContent = p.team ? `${p.name} · ${p.team}` : p.name;
       head.appendChild(who);
-      if (keys.length) {
-        const sum = document.createElement("span");
-        sum.className = "muted small";
-        sum.textContent = `${offs} ρεπό · ${lims} με ώρες`;
-        head.appendChild(sum);
-      }
       item.appendChild(head);
 
-      if (entry.note) {
+      if (note) {
         const wish = document.createElement("p");
         wish.className = "wish";
-        wish.textContent = `“${entry.note}”`;
+        wish.textContent = `“${note}”`;
         item.appendChild(wish);
-      }
-
-      if (keys.length) {
-        const rows = document.createElement("div");
-        rows.className = "who-list";
-        for (const key of keys) {
-          const row = document.createElement("div");
-          row.className = "who";
-          row.appendChild(chip(days[key].kind, `<b>${dayShort(key)}</b> · ${shortOf(days[key])}`));
-          if (days[key].note) {
-            const why = document.createElement("span");
-            why.className = "why";
-            why.textContent = days[key].note;
-            row.appendChild(why);
-          }
-          rows.appendChild(row);
-        }
-        item.appendChild(rows);
-      } else if (!entry.note) {
+      } else {
         const none = document.createElement("p");
         none.className = "empty";
         none.style.margin = "0";
-        none.textContent = "Δεν δήλωσε τίποτα για αυτόν τον μήνα.";
+        none.textContent = "Δεν έχει γράψει τι θέλει.";
         item.appendChild(none);
       }
 
@@ -628,21 +600,21 @@
   function render() {
     $("month-label").textContent = monthLabel(state.month);
 
-    const entry = (state.data.entries && state.data.entries[state.me.id]) || {};
+    const mine = (state.data.people && state.data.people[state.me.id]) || {};
 
-    // Η σημείωση του μήνα θέλει ξεχωριστό πάτημα για να αποθηκευτεί. Αν ο
+    // Το «τι θέλω γενικά» θέλει ξεχωριστό πάτημα για να αποθηκευτεί. Αν ο
     // χρήστης έχει ήδη γράψει κάτι και δεν το έχει αποθηκεύσει, ΔΕΝ του το
     // σβήνουμε επειδή έτυχε να ξαναζωγραφιστεί η σελίδα (π.χ. μόλις
     // καταχώρησε μια μέρα) — αλλιώς χάνει ό,τι έγραψε χωρίς να το καταλάβει.
     const noteBox = $("my-note");
-    const savedNote = entry.note || "";
+    const savedNote = mine.note || "";
     if (noteBox.value === (noteBox.dataset.saved || "")) noteBox.value = savedNote;
     noteBox.dataset.saved = savedNote;
     showNoteState();
 
+    // Η προθεσμία αφορά μόνο τα αιτήματα του μήνα. Το «τι θέλω γενικά» δεν
+    // ανήκει σε μήνα, οπότε γράφεται όποτε να 'ναι.
     const closed = state.data.closed && state.me.role !== "admin";
-    $("my-note").disabled = closed;
-    $("save-note").disabled = closed;
     if (closed) {
       say(`Η προθεσμία για ${monthLabel(state.month)} έχει περάσει — μίλα στη διεύθυνση.`, true);
     }
@@ -790,14 +762,14 @@
   async function saveMyNote() {
     $("save-note").disabled = true;
     try {
-      state.data = await api("saveNote", { month: state.month, note: $("my-note").value });
+      state.data = await api("saveProfile", { month: state.month, note: $("my-note").value });
       // Δείχνουμε ακριβώς ό,τι αποθηκεύτηκε, ώστε να μη μείνει η σελίδα να λέει
       // "αναποθήκευτο" για ένα κενό που κόπηκε στο καθάρισμα.
-      const stored = ((state.data.entries || {})[state.me.id] || {}).note || "";
+      const stored = ((state.data.people || {})[state.me.id] || {}).note || "";
       $("my-note").value = stored;
       $("my-note").dataset.saved = stored;
       render();
-      say("Η σημείωση αποθηκεύτηκε.");
+      say("Αποθηκεύτηκε. Ισχύει για κάθε μήνα.");
     } catch (e) {
       say(e.message, true);
     } finally {
@@ -816,6 +788,8 @@
     $("view-all").hidden = view !== "all";
     $("view-people").hidden = view !== "people";
     $("view-admin").hidden = view !== "admin";
+    // Στους «Εργαζόμενους» δεν υπάρχει μήνας — είναι μόνιμα στοιχεία.
+    document.querySelector(".month-bar").hidden = view === "people";
   }
 
   /* ---------------- σύνδεση γεγονότων ---------------- */
