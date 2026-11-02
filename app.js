@@ -328,8 +328,14 @@
     state.me = null;
     state.data = null;
     // Το πρόγραμμα εξαρτάται από τον ρόλο: αν μπει άλλος στην ίδια συσκευή,
-    // δεν του το δείχνουμε όπως το έβλεπε ο προηγούμενος.
+    // δεν του το δείχνουμε όπως το έβλεπε ο προηγούμενος. Δεν αρκεί να
+    // ξεχάσουμε τα δεδομένα — σβήνουμε και τον πίνακα από την οθόνη, αλλιώς
+    // ο επόμενος βλέπει για λίγο τον πίνακα του προηγούμενου (με τις ώρες)
+    // μέχρι να φορτώσει ο δικός του.
     state.rota = null;
+    $("rota").innerHTML = "";
+    $("week-tools").hidden = true;
+    $("week-help").textContent = "";
     try {
       localStorage.removeItem(STORAGE);
     } catch {
@@ -668,6 +674,8 @@
     const data = state.rota;
     if (!data) return;
     const canPlan = Boolean(data.canPlan);
+    // Η στήλη με τις ώρες είναι μόνο για τη διεύθυνση και τη λογίστρια.
+    const showHours = Boolean(data.canSeeHours);
 
     disarmCopy();
     $("week-label").textContent = weekLabel(state.week);
@@ -707,10 +715,12 @@
       headRow.appendChild(cell);
     });
 
-    const sumHead = document.createElement("th");
-    sumHead.className = "sum-col";
-    sumHead.textContent = "ΩΡΕΣ";
-    headRow.appendChild(sumHead);
+    if (showHours) {
+      const sumHead = document.createElement("th");
+      sumHead.className = "sum-col";
+      sumHead.textContent = "ΩΡΕΣ";
+      headRow.appendChild(sumHead);
+    }
 
     head.appendChild(headRow);
     table.appendChild(head);
@@ -722,7 +732,7 @@
         const row = document.createElement("tr");
         row.className = "group";
         const cell = document.createElement("th");
-        cell.colSpan = data.days.length + 2;
+        cell.colSpan = data.days.length + (showHours ? 2 : 1);
         // Σε <span> για να μένει ο τίτλος ορατός όσο σέρνεις τον πίνακα πλάγια.
         const label = document.createElement("span");
         label.textContent = group.name;
@@ -730,12 +740,12 @@
         row.appendChild(cell);
         body.appendChild(row);
       }
-      for (const id of group.ids) body.appendChild(rotaRow(id, canPlan));
+      for (const id of group.ids) body.appendChild(rotaRow(id, canPlan, showHours));
     }
     table.appendChild(body);
   }
 
-  function rotaRow(id, canPlan) {
+  function rotaRow(id, canPlan, showHours) {
     const data = state.rota;
     const row = document.createElement("tr");
     if (id === state.me.id) row.className = "is-me";
@@ -796,10 +806,12 @@
       row.appendChild(td);
     }
 
-    const sum = document.createElement("td");
-    sum.className = "sum-col";
-    sum.textContent = minutes ? hoursText(minutes) : "";
-    row.appendChild(sum);
+    if (showHours) {
+      const sum = document.createElement("td");
+      sum.className = "sum-col";
+      sum.textContent = minutes ? hoursText(minutes) : "";
+      row.appendChild(sum);
+    }
     return row;
   }
 

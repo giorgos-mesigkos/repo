@@ -326,7 +326,9 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
   border-right: 1px solid var(--line);
 }
 .rota tr:last-child th, .rota tr:last-child td { border-bottom: 0; }
-.rota .sum-col { border-right: 0; }
+/* Η τελευταία στήλη ακουμπάει στο πλαίσιο — και η στήλη των ωρών μπορεί να
+   λείπει εντελώς, γιατί δεν τη βλέπουν όλοι. */
+.rota tr > :last-child { border-right: 0; }
 
 .rota thead th {
   background: #0f172a;
