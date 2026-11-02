@@ -171,6 +171,14 @@
     <p id="sheet-info" class="muted small"></p>
 
     <div id="sheet-staff-row" class="field" hidden>
+      <!-- Όπως και στη σύνδεση: φαίνεται μόνο σε επιχειρήσεις με πολύ
+           προσωπικό, όπου η λίστα γίνεται μεγάλη. -->
+      <div id="sheet-search-row" hidden>
+        <label for="sheet-search">Βρες τον εργαζόμενο</label>
+        <input id="sheet-search" type="search" autocomplete="off" enterkeyhint="done"
+               placeholder="γράψε τα πρώτα γράμματα">
+      </div>
+
       <label for="sheet-staff">Για ποιον;</label>
       <select id="sheet-staff"></select>
     </div>

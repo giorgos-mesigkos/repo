@@ -1055,6 +1055,10 @@
     // Ο admin μπορεί να δηλώσει για λογαριασμό άλλου.
     $("sheet-staff-row").hidden = !isAdmin;
     if (isAdmin) {
+      // Κάθε φορά που ανοίγει η μέρα, η αναζήτηση ξεκινάει καθαρή και
+      // διαλεγμένος είναι ο ίδιος — η συνηθισμένη περίπτωση.
+      $("sheet-search").value = "";
+      $("sheet-search-row").hidden = state.cfg.staff.length <= 8;
       fillStaffSelect($("sheet-staff"), false);
       $("sheet-staff").value = state.me.id;
     }
@@ -1101,6 +1105,16 @@
     $("sheet-note").value = d.note || "";
   }
 
+  /** Άλλαξε το άτομο στο «Για ποιον;»: δείξε τι έχει δηλώσει εκείνο. */
+  function showPickedStaff() {
+    const entries = (state.data && state.data.entries) || {};
+    const who = $("sheet-staff").value;
+    const d = entries[who] && entries[who].days ? entries[who].days[state.sheet.day] : null;
+    preselect(d);
+    $("sheet-clear").hidden = !d;
+    $("sheet-error").hidden = true;
+  }
+
   function pickKind(kind) {
     state.sheet.kind = kind;
     for (const b of document.querySelectorAll(".kind")) {
@@ -1125,14 +1139,23 @@
       payload.to = $("sheet-to").value;
       if (!payload.from || !payload.to) return sheetError("Συμπλήρωσε ώρα από και έως.");
     }
-    if (state.me.role === "admin") payload.staffId = $("sheet-staff").value;
+    // Με την αναζήτηση η λίστα μπορεί να μείνει άδεια. Χωρίς αυτόν τον έλεγχο
+    // θα στέλναμε κενό άτομο και ο διακομιστής θα το χρέωνε στον ίδιο τον
+    // διαχειριστή — σιωπηλά, σε λάθος άνθρωπο.
+    if (state.me.role === "admin") {
+      if (!$("sheet-staff").value) return sheetError("Διάλεξε για ποιον δηλώνεις.");
+      payload.staffId = $("sheet-staff").value;
+    }
 
     await send("saveDay", payload, "Καταχωρήθηκε.");
   }
 
   async function clearSheet() {
     const payload = { day: state.sheet.day, kind: "clear" };
-    if (state.me.role === "admin") payload.staffId = $("sheet-staff").value;
+    if (state.me.role === "admin") {
+      if (!$("sheet-staff").value) return sheetError("Διάλεξε για ποιον δηλώνεις.");
+      payload.staffId = $("sheet-staff").value;
+    }
     await send("saveDay", payload, "Σβήστηκε.");
   }
 
@@ -1287,13 +1310,16 @@
       setLock(state.sheet.day, false, ""));
 
     // Ο admin αλλάζει άτομο: δείξε τι έχει δηλώσει εκείνος.
-    $("sheet-staff").addEventListener("change", () => {
-      const entries = state.data.entries || {};
-      const who = $("sheet-staff").value;
-      const d = entries[who] && entries[who].days ? entries[who].days[state.sheet.day] : null;
-      preselect(d);
-      $("sheet-clear").hidden = !d;
-      $("sheet-error").hidden = true;
+    $("sheet-staff").addEventListener("change", showPickedStaff);
+
+    $("sheet-search").addEventListener("input", () => {
+      // Αν η αναζήτηση αφήσει έναν, διαλέγεται μόνος του· αν αλλάξει ο
+      // διαλεγμένος, πρέπει να αλλάξει και το τι δείχνει από κάτω.
+      if (fillStaffSelect($("sheet-staff"), false, $("sheet-search").value)) showPickedStaff();
+      else $("sheet-error").hidden = true;
+    });
+    $("sheet-search").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") e.preventDefault();
     });
 
     $("save-note").addEventListener("click", saveMyNote);
