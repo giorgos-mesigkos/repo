@@ -16,7 +16,11 @@
 
   const MONTHS = ["Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου",
     "Ιουλίου", "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου"];
+  const MONTHS_SHORT = ["Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν",
+    "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ"];
   const WEEKDAYS = ["Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ", "Κυρ"];
+  // Για τις στήλες του εβδομαδιαίου πίνακα, όπου ο χώρος είναι ελάχιστος.
+  const WEEKDAYS_2 = ["ΔΕ", "ΤΡ", "ΤΕ", "ΠΕ", "ΠΑ", "ΣΑ", "ΚΥ"];
   const KIND_LABEL = { off: "ΡΕΠΟ", limited: "ώρες", note: "σημείωση" };
 
   /* ---------------- κατάσταση ---------------- */
@@ -27,8 +31,11 @@
     token: null,    // το "εισιτήριο" της σύνδεσης
     month: "",      // "2026-11"
     data: null,     // τα δεδομένα του μήνα
+    week: "",       // η Δευτέρα της εβδομάδας που βλέπουμε, "2026-11-02"
+    rota: null,     // το πρόγραμμα αυτής της εβδομάδας
     view: "mine",
     sheet: { day: "", kind: "", adminMode: false },
+    shift: { day: "", staffId: "" },
   };
 
   const STORAGE = "shift-planner-session";
@@ -180,6 +187,40 @@
     return today.slice(0, 7);
   }
 
+  /* ---- εβδομάδες: ξεκινούν Δευτέρα και τις λέμε με την ημερομηνία της ---- */
+
+  function dateOf(day) {
+    const [y, m, d] = day.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d));
+  }
+
+  function keyOfDate(date) {
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  }
+
+  function mondayOf(day) {
+    const date = dateOf(day);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return keyOfDate(date);
+  }
+
+  function shiftWeek(monday, weeks) {
+    const date = dateOf(monday);
+    date.setUTCDate(date.getUTCDate() + weeks * 7);
+    return keyOfDate(date);
+  }
+
+  /** «2 – 8 Νοεμβρίου 2026», ή «30 Νοε – 6 Δεκ 2026» όταν αλλάζει ο μήνας. */
+  function weekLabel(monday) {
+    const [, m1, d1] = monday.split("-").map(Number);
+    const end = shiftWeek(monday, 0);
+    const last = keyOfDate(new Date(dateOf(end).getTime() + 6 * 86400000));
+    const [y2, m2, d2] = last.split("-").map(Number);
+    return m1 === m2
+      ? `${d1} – ${d2} ${MONTHS[m2 - 1]} ${y2}`
+      : `${d1} ${MONTHS_SHORT[m1 - 1]} – ${d2} ${MONTHS_SHORT[m2 - 1]} ${y2}`;
+  }
+
   /* ---------------- μηνύματα ---------------- */
 
   function say(text, bad) {
@@ -286,6 +327,9 @@
     state.token = null;
     state.me = null;
     state.data = null;
+    // Το πρόγραμμα εξαρτάται από τον ρόλο: αν μπει άλλος στην ίδια συσκευή,
+    // δεν του το δείχνουμε όπως το έβλεπε ο προηγούμενος.
+    state.rota = null;
     try {
       localStorage.removeItem(STORAGE);
     } catch {
@@ -319,6 +363,7 @@
       $("admin-locked").innerHTML = "";
     }
     if (!state.month) state.month = currentMonth(state.cfg.today);
+    if (!state.week) state.week = mondayOf(state.cfg.today);
     await loadMonth();
   }
 
@@ -572,6 +617,295 @@
     }
   }
 
+  /* ============================================================
+     ΤΟ ΠΡΟΓΡΑΜΜΑ ΤΗΣ ΕΒΔΟΜΑΔΑΣ
+     ============================================================
+     Ο πίνακας που κρεμιέται στην κουζίνα, σε οθόνη: κάτω από κάθε μέρα,
+     δίπλα σε κάθε όνομα, η ώρα που μπαίνει και η ώρα που σχολάει.
+     Οι γραμμές είναι χωρισμένες σε τμήματα, με τη σειρά που γράφτηκαν
+     στο company-data.js. Άδειο κουτάκι = ρεπό. */
+
+  async function loadWeek() {
+    say("Φορτώνει…");
+    try {
+      state.rota = await api("week", { week: state.week });
+      say("");
+      renderWeek();
+    } catch (e) {
+      say(e.message, true);
+    }
+  }
+
+  /** Πόσα λεπτά κρατάει η βάρδια. Αν η ώρα που σχολάει είναι «μικρότερη»
+      από την ώρα που μπήκε, η βάρδια περνάει τα μεσάνυχτα (18:00 → 00:00). */
+  function shiftMinutes(from, to) {
+    const a = Number(from.slice(0, 2)) * 60 + Number(from.slice(3));
+    let b = Number(to.slice(0, 2)) * 60 + Number(to.slice(3));
+    if (b <= a) b += 24 * 60;
+    return b - a;
+  }
+
+  function hoursText(minutes) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h}:${pad(m)}` : String(h);
+  }
+
+  /** Τι είχε ζητήσει ο εργαζόμενος για τη μέρα αυτή, με λόγια. */
+  function wishText(w) {
+    const why = w.note ? ` — ${w.note}` : "";
+    if (w.kind === "off") return `ζήτησε ρεπό${why}`;
+    if (w.kind === "limited") return `μπορεί ${w.from}–${w.to}${why}`;
+    return w.note || "σημείωση";
+  }
+
+  function nameInRota(id) {
+    const s = state.rota && state.rota.staff && state.rota.staff[id];
+    return s ? s.name : id;
+  }
+
+  function renderWeek() {
+    const data = state.rota;
+    if (!data) return;
+    const canPlan = Boolean(data.canPlan);
+
+    disarmCopy();
+    $("week-label").textContent = weekLabel(state.week);
+    $("week-tools").hidden = !canPlan;
+    $("week-help").textContent = (canPlan
+      ? "Πάτα ένα κουτάκι και βάλε τι ώρα μπαίνει και τι ώρα σχολάει. Παύλα = ρεπό. Το χρωματιστό σημαδάκι στη γωνία δείχνει ότι ο εργαζόμενος είχε ζητήσει κάτι για εκείνη τη μέρα."
+      : "Το πρόγραμμα της εβδομάδας, όπως το έφτιαξε η διεύθυνση. Παύλα = ρεπό. Η δική σου γραμμή είναι τονισμένη.")
+      + " Σε κινητό σύρε τον πίνακα πλάγια για να δεις όλη την εβδομάδα.";
+
+    const table = $("rota");
+    table.innerHTML = "";
+
+    /* --- η γραμμή με τις μέρες --- */
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+
+    const corner = document.createElement("th");
+    corner.className = "name-col";
+    corner.textContent = "ΟΝΟΜΑ";
+    headRow.appendChild(corner);
+
+    data.days.forEach((day, i) => {
+      const cell = document.createElement("th");
+      cell.className = "day-col";
+      if (day === data.today) cell.classList.add("is-today");
+      if (data.lockedDays[day]) {
+        cell.classList.add("is-locked");
+        cell.title = `Κλειδωμένη μέρα: ${data.lockedDays[day]}`;
+      }
+      const wd = document.createElement("span");
+      wd.className = "wd";
+      wd.textContent = WEEKDAYS_2[i];
+      const dn = document.createElement("span");
+      dn.className = "dn";
+      dn.textContent = String(Number(day.slice(8)));
+      cell.append(wd, dn);
+      headRow.appendChild(cell);
+    });
+
+    const sumHead = document.createElement("th");
+    sumHead.className = "sum-col";
+    sumHead.textContent = "ΩΡΕΣ";
+    headRow.appendChild(sumHead);
+
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    /* --- οι γραμμές, τμήμα-τμήμα --- */
+    const body = document.createElement("tbody");
+    for (const group of data.groups) {
+      if (group.name) {
+        const row = document.createElement("tr");
+        row.className = "group";
+        const cell = document.createElement("th");
+        cell.colSpan = data.days.length + 2;
+        // Σε <span> για να μένει ο τίτλος ορατός όσο σέρνεις τον πίνακα πλάγια.
+        const label = document.createElement("span");
+        label.textContent = group.name;
+        cell.appendChild(label);
+        row.appendChild(cell);
+        body.appendChild(row);
+      }
+      for (const id of group.ids) body.appendChild(rotaRow(id, canPlan));
+    }
+    table.appendChild(body);
+  }
+
+  function rotaRow(id, canPlan) {
+    const data = state.rota;
+    const row = document.createElement("tr");
+    if (id === state.me.id) row.className = "is-me";
+
+    const name = document.createElement("th");
+    name.className = "name-col";
+    name.scope = "row";
+    name.textContent = nameInRota(id);
+    row.appendChild(name);
+
+    const shifts = data.shifts[id] || {};
+    const wishes = data.requests[id] || {};
+    let minutes = 0;
+
+    for (const day of data.days) {
+      const td = document.createElement("td");
+      if (day === data.today) td.classList.add("is-today");
+
+      const shift = shifts[day];
+      const wish = wishes[day];
+      const locked = data.lockedDays[day];
+
+      // Όποιος δεν γράφει το πρόγραμμα παίρνει απλό κουτάκι, όχι κουμπί —
+      // για να μην του φαίνεται ότι μπορεί να το αλλάξει.
+      const box = document.createElement(canPlan ? "button" : "span");
+      box.className = "cell";
+      if (canPlan) box.type = "button";
+      if (locked) box.classList.add("is-locked");
+
+      if (shift) {
+        const from = document.createElement("span");
+        from.className = "t-from";
+        from.textContent = shift.from;
+        const to = document.createElement("span");
+        to.className = "t-to";
+        to.textContent = shift.to;
+        box.append(from, to);
+        minutes += shiftMinutes(shift.from, shift.to);
+      } else {
+        const none = document.createElement("span");
+        none.className = "t-none";
+        none.textContent = "–";
+        box.appendChild(none);
+      }
+
+      const notes = [];
+      if (wish) {
+        box.classList.add(`wish-${wish.kind}`);
+        notes.push(wishText(wish));
+      }
+      if (locked) notes.push(`κλειδωμένη: ${locked}`);
+      const label = `${nameInRota(id)} · ${dateLabel(day)}${shift ? ` · ${shift.from}–${shift.to}` : " · ρεπό"}`;
+      box.title = notes.length ? `${label} · ${notes.join(" · ")}` : label;
+      box.setAttribute("aria-label", box.title);
+
+      if (canPlan) box.addEventListener("click", () => openShift(id, day));
+      td.appendChild(box);
+      row.appendChild(td);
+    }
+
+    const sum = document.createElement("td");
+    sum.className = "sum-col";
+    sum.textContent = minutes ? hoursText(minutes) : "";
+    row.appendChild(sum);
+    return row;
+  }
+
+  /* ---- το παραθυράκι ενός κουτακιού ---- */
+
+  function openShift(staffId, day) {
+    const data = state.rota;
+    state.shift = { staffId, day };
+
+    const shift = (data.shifts[staffId] || {})[day];
+    const wish = (data.requests[staffId] || {})[day];
+
+    $("shift-title").textContent = `${nameInRota(staffId)} · ${dateLabel(day)}`;
+
+    const info = [];
+    if (data.lockedDays[day]) info.push(`🔒 Κλειδωμένη μέρα: ${data.lockedDays[day]}`);
+    if (wish) info.push(wishText(wish));
+    $("shift-info").textContent = info.join(" · ") || "Δεν έχει ζητήσει τίποτα για αυτή τη μέρα.";
+
+    $("shift-from").value = shift ? shift.from : "";
+    $("shift-to").value = shift ? shift.to : "";
+    $("shift-clear").hidden = !shift;
+    $("shift-error").hidden = true;
+    $("shift-sheet").hidden = false;
+  }
+
+  function shiftError(text) {
+    const el = $("shift-error");
+    el.textContent = text;
+    el.hidden = false;
+  }
+
+  async function saveShift() {
+    const { staffId, day } = state.shift;
+    const from = $("shift-from").value;
+    const to = $("shift-to").value;
+    if (!from || !to) return shiftError("Συμπλήρωσε και τις δύο ώρες. Για ρεπό, πάτα «Ρεπό».");
+    await sendWeek("saveShift", { staffId, day, from, to }, "Μπήκε στο πρόγραμμα.");
+  }
+
+  async function clearShift() {
+    const { staffId, day } = state.shift;
+    await sendWeek("saveShift", { staffId, day, kind: "clear" }, "Μπήκε ρεπό.");
+  }
+
+  /** Στέλνει, ξαναζωγραφίζει τον πίνακα, κλείνει το παραθυράκι. */
+  async function sendWeek(action, payload, okText) {
+    $("shift-save").disabled = true;
+    try {
+      state.rota = await api(action, { ...payload, week: state.week });
+      $("shift-sheet").hidden = true;
+      renderWeek();
+      say(okText);
+      setTimeout(() => {
+        if ($("status").textContent === okText) say("");
+      }, 2500);
+    } catch (e) {
+      shiftError(e.message);
+    } finally {
+      $("shift-save").disabled = false;
+    }
+  }
+
+  /**
+   * Οι περισσότερες εβδομάδες μοιάζουν μεταξύ τους. Αντί να ξαναγράφει ο
+   * υπεύθυνος 25 άτομα επί 7 μέρες, αντιγράφει και διορθώνει τις αλλαγές.
+   */
+  let copyArmed = 0;
+
+  async function copyPrevWeek() {
+    const btn = $("week-copy");
+
+    // Σβήνει ό,τι υπάρχει ήδη, άρα θέλει επιβεβαίωση. Δεύτερο πάτημα στο ίδιο
+    // κουμπί αντί για παραθυράκι του browser: σε κινητό δουλεύει παντού.
+    //
+    // Η προειδοποίηση μπαίνει ΜΕΣΑ στο κουμπί και όχι από πάνω του: αν
+    // εμφανιζόταν μήνυμα πιο πάνω στη σελίδα, το κουμπί θα κατέβαινε και το
+    // δεύτερο πάτημα θα έπεφτε στο κενό.
+    if (!copyArmed) {
+      copyArmed = setTimeout(disarmCopy, 8000);
+      btn.textContent = "Σίγουρα; Πάτα ξανά";
+      btn.classList.add("is-armed");
+      return;
+    }
+    disarmCopy();
+
+    btn.disabled = true;
+    try {
+      state.rota = await api("copyWeek", { week: state.week });
+      renderWeek();
+      say("Αντιγράφηκε η προηγούμενη εβδομάδα. Τώρα διόρθωσε μόνο ό,τι αλλάζει.");
+    } catch (e) {
+      say(e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function disarmCopy() {
+    clearTimeout(copyArmed);
+    copyArmed = 0;
+    const btn = $("week-copy");
+    btn.textContent = "Αντίγραψε την προηγούμενη εβδομάδα";
+    btn.classList.remove("is-armed");
+  }
+
   function renderAdmin() {
     renderCalendar($("admin-calendar"), true);
 
@@ -746,6 +1080,9 @@
     $("sheet-save").disabled = true;
     try {
       state.data = await api(action, payload);
+      // Άλλαξαν τα αιτήματα ή οι κλειδωμένες μέρες: ο πίνακας του
+      // προγράμματος τα δείχνει, οπότε θα ξαναφορτωθεί φρέσκος.
+      state.rota = null;
       $("sheet").hidden = true;
       render();
       say(okText);
@@ -791,11 +1128,19 @@
       t.classList.toggle("is-on", t.dataset.view === view);
     }
     $("view-mine").hidden = view !== "mine";
+    $("view-week").hidden = view !== "week";
     $("view-all").hidden = view !== "all";
     $("view-people").hidden = view !== "people";
     $("view-admin").hidden = view !== "admin";
-    // Στους «Εργαζόμενους» δεν υπάρχει μήνας — είναι μόνιμα στοιχεία.
-    document.querySelector(".month-bar").hidden = view === "people";
+
+    // Κάθε καρτέλα έχει τη δική της μπάρα: μήνα ή εβδομάδα. Στους
+    // «Εργαζόμενους» καμία — τα στοιχεία τους είναι μόνιμα.
+    $("month-bar").hidden = view === "people" || view === "week";
+    $("week-bar").hidden = view !== "week";
+
+    // Το πρόγραμμα το φορτώνουμε την πρώτη φορά που θα το ζητήσει κάποιος,
+    // για να μη φορτώνει δύο πράγματα κάθε φορά που μπαίνει στην εφαρμογή.
+    if (view === "week" && !state.rota) loadWeek();
   }
 
   /* ---------------- σύνδεση γεγονότων ---------------- */
@@ -820,6 +1165,25 @@
       loadMonth();
     });
 
+    $("week-prev").addEventListener("click", () => {
+      state.week = shiftWeek(state.week, -1);
+      loadWeek();
+    });
+    $("week-next").addEventListener("click", () => {
+      state.week = shiftWeek(state.week, 1);
+      loadWeek();
+    });
+    $("week-copy").addEventListener("click", copyPrevWeek);
+
+    $("shift-save").addEventListener("click", saveShift);
+    $("shift-clear").addEventListener("click", clearShift);
+    $("shift-close").addEventListener("click", () => {
+      $("shift-sheet").hidden = true;
+    });
+    $("shift-sheet").addEventListener("click", (e) => {
+      if (e.target === $("shift-sheet")) $("shift-sheet").hidden = true;
+    });
+
     for (const b of document.querySelectorAll(".kind")) {
       b.addEventListener("click", () => {
         pickKind(b.dataset.kind);
@@ -836,7 +1200,9 @@
       if (e.target === $("sheet")) $("sheet").hidden = true;
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") $("sheet").hidden = true;
+      if (e.key !== "Escape") return;
+      $("sheet").hidden = true;
+      $("shift-sheet").hidden = true;
     });
 
     $("sheet-do-lock").addEventListener("click", () =>

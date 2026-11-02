@@ -47,6 +47,44 @@
   const monthOf = (day) => day.slice(0, 7);
   const pad = (n) => String(n).padStart(2, "0");
 
+  /* ---------------- Εβδομάδες ----------------
+     Η εβδομάδα ξεκινάει ΔΕΥΤΕΡΑ και την ονομάζουμε με την ημερομηνία
+     της Δευτέρας της, π.χ. "2026-11-02". Οι λογαριασμοί γίνονται σε UTC
+     για να μην μπλέξουμε με αλλαγές ώρας: μετράμε μέρες, όχι ώρες. */
+
+  function dateOf(day) {
+    const [y, m, d] = day.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d));
+  }
+
+  function keyOfDate(date) {
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  }
+
+  /** Η Δευτέρα της εβδομάδας στην οποία ανήκει αυτή η μέρα. */
+  function mondayOf(day) {
+    const date = dateOf(day);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return keyOfDate(date);
+  }
+
+  /** Οι επτά μέρες της εβδομάδας, Δευτέρα → Κυριακή. */
+  function weekDays(monday) {
+    const date = dateOf(monday);
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      out.push(keyOfDate(date));
+      date.setUTCDate(date.getUTCDate() + 1);
+    }
+    return out;
+  }
+
+  function shiftWeek(monday, weeks) {
+    const date = dateOf(monday);
+    date.setUTCDate(date.getUTCDate() + weeks * 7);
+    return keyOfDate(date);
+  }
+
   /** Κόβει κείμενο που γράφει ο χρήστης, για να μη φουσκώνει η αποθήκευση. */
   function clean(text, max) {
     if (typeof text !== "string") return "";
@@ -115,6 +153,29 @@
     await ctx.store.set("people", JSON.stringify(data));
   }
 
+  /* ---------------- Το εβδομαδιαίο πρόγραμμα ----------------
+     Αυτό είναι το ΤΕΛΙΚΟ πρόγραμμα: ποιος δουλεύει ποια μέρα και από τι
+     ώρα ως τι ώρα. Το γράφει μόνο η διεύθυνση ή ο υπεύθυνος προγράμματος.
+
+     Δεν έχει καμία σχέση με τα αιτήματα: τα αιτήματα είναι τι ΖΗΤΗΣΕ ο
+     καθένας, εδώ είναι τι ΑΠΟΦΑΣΙΣΤΗΚΕ. Γι' αυτό αποθηκεύεται χωριστά,
+     ανά εβδομάδα — όπως ακριβώς το χαρτί που κρεμιέται στην κουζίνα.
+
+       shifts = { "nikos": { "2026-11-02": { from: "11:00", to: "18:00" } } }
+
+     Μέρα χωρίς ώρες = ρεπό. Δεν αποθηκεύουμε τίποτα γι' αυτήν. */
+
+  async function loadWeek(ctx, monday) {
+    const raw = await ctx.store.get(`week-${monday}`);
+    if (!raw) return { shifts: {} };
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return { shifts: data.shifts || {} };
+  }
+
+  async function saveWeek(ctx, monday, data) {
+    await ctx.store.set(`week-${monday}`, JSON.stringify(data));
+  }
+
   /**
    * Έχει περάσει η προθεσμία για τον μήνα αυτόν;
    * Η προθεσμία είναι η <deadlineDayOfPreviousMonth> του προηγούμενου μήνα.
@@ -158,6 +219,31 @@
     return index;
   }
 
+  /**
+   * Το προσωπικό χωρισμένο σε τμήματα, με τη ΣΕΙΡΑ που γράφτηκαν τα τμήματα
+   * στο company-data.js — αυτή είναι και η σειρά των γραμμών στον πίνακα του
+   * προγράμματος. Όποιος δεν ανήκει σε κανένα τμήμα μπαίνει στο τέλος.
+   *
+   * Αν η επιχείρηση δεν όρισε τμήματα, φτιάχνονται μόνα τους από τα "team"
+   * που βρέθηκαν· αν δεν υπάρχουν ούτε αυτά, βγαίνει μία ομάδα χωρίς τίτλο.
+   */
+  function groupedStaff(company) {
+    const active = company.staff.filter((p) => p.active !== false);
+    const names = Array.isArray(company.departments) && company.departments.length
+      ? company.departments.slice()
+      : [...new Set(active.map((p) => p.team).filter(Boolean))];
+
+    const groups = names.map((name) => ({ name, ids: [] }));
+    const rest = { name: groups.length ? "Χωρίς τμήμα" : "", ids: [] };
+
+    for (const p of active) {
+      const group = groups.find((g) => g.name === p.team);
+      (group || rest).ids.push(p.id);
+    }
+    if (rest.ids.length) groups.push(rest);
+    return groups.filter((g) => g.ids.length);
+  }
+
   /** Η κοινή απάντηση μετά από κάθε αλλαγή: όλος ο μήνας, φρέσκος. */
   /**
    * Ποιος βλέπει τα μόνιμα στοιχεία ΟΛΩΝ: η διεύθυνση και όποιος έχει
@@ -165,6 +251,14 @@
    */
   function canSeePeople(person) {
     return person.role === "admin" || person.role === "planner";
+  }
+
+  /**
+   * Ποιος ΓΡΑΦΕΙ το εβδομαδιαίο πρόγραμμα. Ίδιοι με παραπάνω: το αφεντικό
+   * και ο υπεύθυνος προγράμματος. Οι υπόλοιποι το βλέπουν μόνο.
+   */
+  function canPlan(person) {
+    return canSeePeople(person);
   }
 
   /**
@@ -191,6 +285,52 @@
       staff: staffIndex(ctx.company),
       today: todayKey(),
       closed: deadlinePassed(ctx.company, month),
+    });
+  }
+
+  /**
+   * Τι ζήτησε ο καθένας για τις μέρες αυτής της εβδομάδας, και ποιες από
+   * αυτές είναι κλειδωμένες. Χρειάζεται για να βλέπει ο υπεύθυνος τα
+   * αιτήματα πάνω στον πίνακα, την ώρα που φτιάχνει το πρόγραμμα.
+   *
+   * Μια εβδομάδα μπορεί να πέφτει σε δύο μήνες (π.χ. 30/11 – 6/12), γι'
+   * αυτό διαβάζουμε όσους μήνες αγγίζει.
+   */
+  async function requestsForDays(ctx, days) {
+    const inWeek = new Set(days);
+    const requests = {};
+    const lockedDays = {};
+
+    for (const m of [...new Set(days.map(monthOf))]) {
+      const data = await loadMonth(ctx, m);
+      for (const [day, reason] of Object.entries(data.lockedDays)) {
+        if (inWeek.has(day)) lockedDays[day] = reason;
+      }
+      for (const [id, entry] of Object.entries(data.entries)) {
+        for (const [day, wish] of Object.entries(entry.days || {})) {
+          if (!inWeek.has(day)) continue;
+          requests[id] = requests[id] || {};
+          requests[id][day] = wish;
+        }
+      }
+    }
+    return { requests, lockedDays };
+  }
+
+  /** Η κοινή απάντηση για το πρόγραμμα: όλη η εβδομάδα, φρέσκια. */
+  async function weekReply(ctx, monday, data, person) {
+    const days = weekDays(monday);
+    const extra = await requestsForDays(ctx, days);
+    return ok({
+      week: monday,
+      days,
+      shifts: data.shifts,
+      requests: extra.requests,
+      lockedDays: extra.lockedDays,
+      staff: staffIndex(ctx.company),
+      groups: groupedStaff(ctx.company),
+      canPlan: canPlan(person),
+      today: todayKey(),
     });
   }
 
@@ -306,6 +446,94 @@
     return monthReply(ctx, month, await loadMonth(ctx, month), person);
   }
 
+  /** Ελέγχει ότι η εβδομάδα που ζητήθηκε είναι όντως μια Δευτέρα. */
+  function readWeek(body) {
+    const w = typeof body.week === "string" ? body.week : "";
+    if (!DAY_KEY.test(w) || mondayOf(w) !== w) return "";
+    return w;
+  }
+
+  /** Το πρόγραμμα μιας εβδομάδας. Το βλέπει κάθε συνδεδεμένος. */
+  async function week(ctx, body, person) {
+    const w = readWeek(body);
+    if (!w) return fail(400, "Λάθος εβδομάδα.");
+    return weekReply(ctx, w, await loadWeek(ctx, w), person);
+  }
+
+  /**
+   * Γράφει ή σβήνει ΕΝΑ κουτάκι του προγράμματος: ένα άτομο, μία μέρα.
+   * Μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.
+   */
+  async function saveShift(ctx, body, person) {
+    if (!canPlan(person)) {
+      return fail(403, "Το πρόγραμμα το γράφει η διεύθυνση ή ο υπεύθυνος προγράμματος.");
+    }
+    const day = typeof body.day === "string" ? body.day : "";
+    if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
+
+    const target = findStaff(ctx.company, typeof body.staffId === "string" ? body.staffId : "");
+    if (!target) return fail(400, "Άγνωστος εργαζόμενος.");
+
+    const monday = mondayOf(day);
+    const data = await loadWeek(ctx, monday);
+    const row = data.shifts[target.id] || {};
+
+    if (body.kind === "clear") {
+      delete row[day];
+    } else {
+      const from = typeof body.from === "string" ? body.from : "";
+      const to = typeof body.to === "string" ? body.to : "";
+      if (!TIME.test(from) || !TIME.test(to)) return fail(400, "Συμπλήρωσε ώρα από και έως.");
+      if (from === to) return fail(400, "Οι δύο ώρες είναι ίδιες.");
+      row[day] = { from, to };
+    }
+
+    // Άτομο χωρίς καμία βάρδια δεν χρειάζεται να πιάνει χώρο.
+    if (Object.keys(row).length) data.shifts[target.id] = row;
+    else delete data.shifts[target.id];
+
+    await saveWeek(ctx, monday, data);
+    return weekReply(ctx, monday, data, person);
+  }
+
+  /**
+   * Αντιγράφει ολόκληρη την προηγούμενη εβδομάδα πάνω σε αυτήν.
+   * Οι περισσότερες εβδομάδες μοιάζουν μεταξύ τους: έτσι ο υπεύθυνος
+   * ξεκινάει από κάτι έτοιμο και διορθώνει μόνο τις αλλαγές.
+   *
+   * ΣΒΗΝΕΙ ό,τι υπήρχε ήδη σε αυτή την εβδομάδα — η σελίδα ρωτάει πρώτα.
+   */
+  async function copyWeek(ctx, body, person) {
+    if (!canPlan(person)) {
+      return fail(403, "Το πρόγραμμα το γράφει η διεύθυνση ή ο υπεύθυνος προγράμματος.");
+    }
+    const w = readWeek(body);
+    if (!w) return fail(400, "Λάθος εβδομάδα.");
+
+    const from = shiftWeek(w, -1);
+    const source = await loadWeek(ctx, from);
+    if (!Object.keys(source.shifts).length) {
+      return fail(400, "Η προηγούμενη εβδομάδα είναι άδεια — δεν υπάρχει τίποτα να αντιγραφεί.");
+    }
+
+    // Αντιστοιχούμε Δευτέρα με Δευτέρα, Τρίτη με Τρίτη κ.ο.κ.
+    const fromDays = weekDays(from);
+    const toDays = weekDays(w);
+    const shifts = {};
+    for (const [id, row] of Object.entries(source.shifts)) {
+      if (!findStaff(ctx.company, id)) continue;   // έφυγε από την επιχείρηση
+      const copy = {};
+      fromDays.forEach((day, i) => {
+        if (row[day]) copy[toDays[i]] = { from: row[day].from, to: row[day].to };
+      });
+      if (Object.keys(copy).length) shifts[id] = copy;
+    }
+
+    const data = { shifts };
+    await saveWeek(ctx, w, data);
+    return weekReply(ctx, w, data, person);
+  }
+
   /** Κλείδωμα / ξεκλείδωμα μέρας για όλους. Μόνο ο διαχειριστής. */
   async function lockDay(ctx, body, person) {
     if (person.role !== "admin") return fail(403, "Μόνο η διεύθυνση κλειδώνει μέρες.");
@@ -323,7 +551,7 @@
     return monthReply(ctx, m, data, person);
   }
 
-  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay };
+  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek };
 
   /**
    * Το μοναδικό σημείο εισόδου.

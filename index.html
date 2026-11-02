@@ -56,15 +56,22 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab is-on" data-view="mine" role="tab">Τα δικά μου</button>
+    <button class="tab" data-view="week" role="tab">Πρόγραμμα</button>
     <button class="tab" data-view="all" role="tab">Μέρα-μέρα</button>
     <button class="tab" data-view="people" role="tab">Εργαζόμενοι</button>
     <button class="tab" data-view="admin" role="tab" hidden>Διαχείριση</button>
   </nav>
 
-  <div class="month-bar">
+  <div id="month-bar" class="month-bar">
     <button id="month-prev" class="ghost" aria-label="Προηγούμενος μήνας">‹</button>
     <strong id="month-label">—</strong>
     <button id="month-next" class="ghost" aria-label="Επόμενος μήνας">›</button>
+  </div>
+
+  <div id="week-bar" class="month-bar" hidden>
+    <button id="week-prev" class="ghost" aria-label="Προηγούμενη εβδομάδα">‹</button>
+    <strong id="week-label">—</strong>
+    <button id="week-next" class="ghost" aria-label="Επόμενη εβδομάδα">›</button>
   </div>
 
   <p id="status" class="status" hidden></p>
@@ -97,6 +104,26 @@
       <h2>Τα αιτήματά μου</h2>
       <div id="my-list" class="list"></div>
     </section>
+  </main>
+
+  <!-- ---- Το πρόγραμμα της εβδομάδας ---- -->
+  <main id="view-week" class="view wide" hidden>
+    <p id="week-help" class="muted small"></p>
+
+    <div id="week-tools" class="row week-tools" hidden>
+      <button id="week-copy" class="ghost small">Αντίγραψε την προηγούμενη εβδομάδα</button>
+      <span class="muted small">Σβήνει ό,τι έχει ήδη γραφτεί σε αυτή την εβδομάδα.</span>
+    </div>
+
+    <div class="rota-wrap">
+      <table id="rota" class="rota"></table>
+    </div>
+
+    <ul class="legend">
+      <li><i class="sw off"></i> ζήτησε ρεπό</li>
+      <li><i class="sw limited"></i> ζήτησε συγκεκριμένες ώρες</li>
+      <li><i class="sw locked"></i> κλειδωμένη μέρα</li>
+    </ul>
   </main>
 
   <!-- ---- Ο μήνας όλων ---- -->
@@ -172,6 +199,27 @@
       <button id="sheet-save" class="primary">Αποθήκευση</button>
       <button id="sheet-clear" class="ghost">Σβήσε το αίτημα</button>
       <button id="sheet-close" class="ghost">Κλείσιμο</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ΠΑΡΑΘΥΡΟ ΒΑΡΔΙΑΣ (ένα κουτάκι του προγράμματος) ============ -->
+<div id="shift-sheet" class="sheet" hidden>
+  <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="shift-title">
+    <h2 id="shift-title">—</h2>
+    <p id="shift-info" class="muted small"></p>
+
+    <div class="field two">
+      <div><label for="shift-from">Μπαίνει</label><input id="shift-from" type="time" step="900"></div>
+      <div><label for="shift-to">Σχολάει</label><input id="shift-to" type="time" step="900"></div>
+    </div>
+
+    <p id="shift-error" class="error" role="alert" hidden></p>
+
+    <div class="row sheet-actions">
+      <button id="shift-save" class="primary">Αποθήκευση</button>
+      <button id="shift-clear" class="ghost">Ρεπό</button>
+      <button id="shift-close" class="ghost">Κλείσιμο</button>
     </div>
   </div>
 </div>
