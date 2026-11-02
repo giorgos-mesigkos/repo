@@ -206,6 +206,8 @@
       staff: company.staff
         .filter((p) => p.active !== false)
         .map((p) => ({ id: p.id, name: p.name, team: p.team || "" })),
+      // Με ποια σειρά και σε ποιες ομάδες μπαίνουν τα ονόματα στις λίστες.
+      staffGroups: pickGroups(company),
       today: todayKey(),
     };
   }
@@ -242,6 +244,30 @@
     }
     if (rest.ids.length) groups.push(rest);
     return groups.filter((g) => g.ids.length);
+  }
+
+  /**
+   * Η σειρά με την οποία εμφανίζεται το προσωπικό στις λίστες επιλογής
+   * (ποιος είσαι, για ποιον δηλώνω): πρώτα η διεύθυνση, μετά ο υπεύθυνος
+   * προγράμματος, και μετά όλοι οι υπόλοιποι ανά τμήμα.
+   *
+   * Οι δύο πρώτοι μπαίνουν σε ομάδα ΧΩΡΙΣ τίτλο: είναι λίγοι, τους ψάχνει
+   * κανείς πρώτους, και δεν χρειάζεται να γράφει η λίστα τι δουλειά κάνουν.
+   *
+   * Ο ρόλος του καθενός δεν φεύγει από τον διακομιστή — φεύγει μόνο η σειρά.
+   */
+  function pickGroups(company) {
+    const active = company.staff.filter((p) => p.active !== false);
+    const first = { name: "", ids: [] };
+    for (const p of active) if (p.role === "admin") first.ids.push(p.id);
+    for (const p of active) if (p.role === "planner") first.ids.push(p.id);
+
+    const taken = new Set(first.ids);
+    const rest = groupedStaff(company)
+      .map((g) => ({ name: g.name, ids: g.ids.filter((id) => !taken.has(id)) }))
+      .filter((g) => g.ids.length);
+
+    return first.ids.length ? [first, ...rest] : rest;
   }
 
   /** Η κοινή απάντηση μετά από κάθε αλλαγή: όλος ο μήνας, φρέσκος. */

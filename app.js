@@ -273,20 +273,69 @@
     }
   }
 
-  function fillStaffSelect(select, list, withBlank) {
+  /**
+   * Χωρίς τόνους, χωρίς κεφαλαία, με ένα σίγμα — ώστε το «γιαννης» να βρίσκει
+   * τον «Γιάννη Κ.» και το «σοφια» τη «Σοφία Α.». Σε ελληνικά ονόματα χωρίς
+   * αυτό η αναζήτηση δεν θα έβρισκε σχεδόν τίποτα.
+   */
+  function fold(text) {
+    return String(text)
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/ς/g, "σ");
+  }
+
+  /**
+   * Γεμίζει μια λίστα ονομάτων: πρώτα η διεύθυνση και ο υπεύθυνος
+   * προγράμματος (χωρίς τίτλο ομάδας), μετά τα τμήματα με τη σειρά τους.
+   * Το τμήμα γράφεται μία φορά, ως τίτλος — όχι σε παρένθεση δίπλα σε κάθε
+   * όνομα, που σε μεγάλη επιχείρηση γεμίζει την οθόνη.
+   *
+   * Το `filter` κρατάει μόνο όσους ταιριάζουν· επιστρέφει πόσοι έμειναν.
+   */
+  function fillStaffSelect(select, withBlank, filter) {
+    const names = {};
+    for (const p of state.cfg.staff) names[p.id] = p.name;
+
+    const needle = fold(filter || "").trim();
     select.innerHTML = "";
-    if (withBlank) {
-      const o = document.createElement("option");
-      o.value = "";
-      o.textContent = "— διάλεξε —";
-      select.appendChild(o);
+
+    const blank = withBlank ? document.createElement("option") : null;
+    if (blank) {
+      blank.value = "";
+      select.appendChild(blank);
     }
-    for (const p of list) {
-      const o = document.createElement("option");
-      o.value = p.id;
-      o.textContent = p.team ? `${p.name} (${p.team})` : p.name;
-      select.appendChild(o);
+
+    let shown = 0;
+    let onlyOne = "";
+
+    for (const group of state.cfg.staffGroups || []) {
+      // Ταιριάζει και το τμήμα: γράφεις «σερβις» και βλέπεις όλο το σέρβις.
+      const ids = group.ids.filter((id) =>
+        !needle || fold(names[id] || id).includes(needle) || fold(group.name).includes(needle));
+      if (!ids.length) continue;
+
+      const box = group.name ? document.createElement("optgroup") : select;
+      if (group.name) box.label = group.name;
+
+      for (const id of ids) {
+        const o = document.createElement("option");
+        o.value = id;
+        o.textContent = names[id] || id;
+        box.appendChild(o);
+        shown++;
+        onlyOne = id;
+      }
+      if (group.name) select.appendChild(box);
     }
+
+    if (blank) {
+      blank.textContent = shown ? "— διάλεξε —" : "— κανένα όνομα δεν ταιριάζει —";
+    }
+    // Έμεινε ένας: διάλεξέ τον, να μην ξαναπατάει τη λίστα.
+    if (shown === 1) select.value = onlyOne;
+    return shown;
   }
 
   async function doLogin() {
@@ -343,6 +392,10 @@
     }
     $("app").hidden = true;
     $("sheet").hidden = true;
+    // Η αναζήτηση καθαρίζει: ο επόμενος ξεκινάει από ολόκληρη τη λίστα και
+    // δεν βλέπει τι έψαξε ο προηγούμενος.
+    $("login-search").value = "";
+    if (state.cfg) fillStaffSelect($("login-staff"), true, "");
     $("login").hidden = false;
   }
 
@@ -1002,7 +1055,7 @@
     // Ο admin μπορεί να δηλώσει για λογαριασμό άλλου.
     $("sheet-staff-row").hidden = !isAdmin;
     if (isAdmin) {
-      fillStaffSelect($("sheet-staff"), state.cfg.staff, false);
+      fillStaffSelect($("sheet-staff"), false);
       $("sheet-staff").value = state.me.id;
     }
 
@@ -1162,6 +1215,17 @@
     $("login-pin").addEventListener("keydown", (e) => {
       if (e.key === "Enter") doLogin();
     });
+
+    $("login-search").addEventListener("input", () => {
+      fillStaffSelect($("login-staff"), true, $("login-search").value);
+      $("login-error").hidden = true;
+    });
+    $("login-search").addEventListener("keydown", (e) => {
+      // Enter μέσα στην αναζήτηση: πήγαινε στο PIN, μη στέλνεις τη φόρμα.
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if ($("login-staff").value) $("login-pin").focus();
+    });
     $("logout").addEventListener("click", logout);
 
     for (const t of document.querySelectorAll(".tab")) {
@@ -1249,7 +1313,10 @@
       return;
     }
     applyTheme(state.cfg);
-    fillStaffSelect($("login-staff"), state.cfg.staff, true);
+    // Σε μικρή επιχείρηση η αναζήτηση είναι περιττή — χωράνε όλοι στη ματιά.
+    // Από εννιά άτομα και πάνω αρχίζει το ψάξιμο, οπότε εμφανίζεται.
+    $("login-search-row").hidden = state.cfg.staff.length <= 8;
+    fillStaffSelect($("login-staff"), true, "");
     state.month = currentMonth(state.cfg.today);
 
     // Ήμουν ήδη συνδεδεμένος σε αυτό το κινητό;

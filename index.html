@@ -27,6 +27,14 @@
     <h1 id="login-brand">—</h1>
     <p id="login-tagline" class="muted"></p>
 
+    <!-- Εμφανίζεται μόνο σε επιχειρήσεις με πολύ προσωπικό, όπου η λίστα
+         γίνεται μεγάλη. Η σελίδα το κρίνει μόνη της. -->
+    <div id="login-search-row" hidden>
+      <label for="login-search">Βρες το όνομά σου</label>
+      <input id="login-search" type="search" autocomplete="off" enterkeyhint="done"
+             placeholder="γράψε τα πρώτα γράμματα">
+    </div>
+
     <label for="login-staff">Ποιος είσαι;</label>
     <select id="login-staff" autocomplete="off"></select>
 
