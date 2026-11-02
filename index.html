@@ -188,13 +188,14 @@
 
     <div class="field" id="sheet-note-row">
       <label for="sheet-note">Ο λόγος <span class="muted small">(τον βλέπουν όλοι)</span></label>
-      <textarea id="sheet-note" class="note-small" rows="2" maxlength="200"
-        placeholder="π.χ. πέθανε η γάτα μου και θέλω να τη θάψω"></textarea>
+      <textarea id="sheet-note" class="note-small" rows="2" maxlength="200"></textarea>
     </div>
 
     <div id="sheet-lock" class="field" hidden>
-      <label for="sheet-reason">Κλείδωμα μέρας για όλους</label>
-      <input id="sheet-reason" type="text" maxlength="60" placeholder="Λόγος (π.χ. Αργία)">
+      <!-- Ο λόγος πέρασε στην ετικέτα: χωρίς αυτόν το κουτί θα έμενε
+           ανώνυμο, αφού ο τίτλος μιλάει για το κλείδωμα, όχι για το κουτί. -->
+      <label for="sheet-reason">Κλείδωμα μέρας για όλους — ο λόγος</label>
+      <input id="sheet-reason" type="text" maxlength="60">
       <div class="row">
         <button id="sheet-do-lock" class="primary">Κλείδωσε τη μέρα</button>
         <button id="sheet-do-unlock" class="ghost">Ξεκλείδωσε</button>
