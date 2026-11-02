@@ -231,6 +231,19 @@
       <div><label for="shift-to">Σχολάει</label><input id="shift-to" type="time" step="900"></div>
     </div>
 
+    <!-- Σπαστό ωράριο: δεύτερο ωράριο την ίδια μέρα. Κρυφό όσο δεν
+         χρειάζεται, για να μη βλέπει τέσσερα κουτιά όποιος θέλει ένα. -->
+    <div id="shift-second" class="field two" hidden>
+      <div><label for="shift-from2">Μπαίνει ξανά</label><input id="shift-from2" type="time" step="900"></div>
+      <div><label for="shift-to2">Σχολάει</label><input id="shift-to2" type="time" step="900"></div>
+    </div>
+    <button id="shift-split" class="ghost small">+ Σπαστό ωράριο</button>
+
+    <div class="field">
+      <label for="shift-note">Σχόλιο <span class="muted small">(λίγες λέξεις, το βλέπουν όλοι)</span></label>
+      <input id="shift-note" type="text" maxlength="40">
+    </div>
+
     <p id="shift-error" class="error" role="alert" hidden></p>
 
     <div class="row sheet-actions">

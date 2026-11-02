@@ -304,8 +304,8 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .7rem 0 
 .week-tools { margin: .2rem 0 .6rem; align-items: center; }
 .week-tools button { flex: 0 1 auto; }
 .week-tools span { flex: 1 1 12rem; }
-/* Το κουμπί περιμένει δεύτερο πάτημα — σβήνει ό,τι υπάρχει ήδη. */
-.week-tools button.is-armed { border-color: var(--off); color: #fca5a5; font-weight: 600; }
+/* Κουμπί που σβήνει κάτι: κόκκινο, για να μη πατηθεί κατά λάθος. */
+button.is-armed { border-color: var(--off); color: #fca5a5; font-weight: 600; }
 
 .rota-wrap {
   overflow-x: auto;
@@ -396,6 +396,26 @@ button.cell:hover { background: var(--card-2); }
 .cell .t-from { display: block; }
 .cell .t-to { display: block; text-align: right; }
 .cell .t-none { display: block; text-align: center; font-size: 1rem; color: var(--muted); }
+
+/* Σπαστό ωράριο: δεύτερο ωράριο κάτω από το πρώτο, χωρισμένο με γραμμούλα
+   ώστε να μη διαβαστεί κατά λάθος σαν ένα. */
+.cell .part { display: block; }
+.cell .part + .part {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--line);
+}
+
+/* Το σχόλιο της μέρας (π.χ. «κάνει και σέρβις»). Μικρό, για να μη φουσκώνει
+   η γραμμή, αλλά ορατό — γι' αυτό υπάρχει. */
+.cell .c-note {
+  display: block;
+  margin-top: 3px;
+  font-size: .65rem;
+  line-height: 1.25;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
 
 .rota td.is-today { background: var(--today-bg); }
 .rota tr.is-me td { background: rgba(255, 255, 255, .04); }
@@ -530,6 +550,7 @@ button.cell:hover { background: var(--card-2); }
   .tab { font-size: .95rem; padding: .5rem .6rem; }
   .rota { font-size: .85rem; }
   .cell { font-size: .78rem; min-height: 46px; }
+  .cell .c-note { font-size: .72rem; }
   /* Σε μεγάλη οθόνη το ημερολόγιο δεν χρειάζεται να απλώνεται όσο η σελίδα —
      τα τετράγωνα θα γίνονταν τεράστια. */
   .calendar { max-width: 520px; margin-inline: auto; }

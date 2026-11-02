@@ -163,7 +163,12 @@
 
        shifts = { "nikos": { "2026-11-02": { from: "11:00", to: "18:00" } } }
 
-     Μέρα χωρίς ώρες = ρεπό. Δεν αποθηκεύουμε τίποτα γι' αυτήν. */
+     Μέρα χωρίς ώρες = ρεπό. Δεν αποθηκεύουμε τίποτα γι' αυτήν.
+
+     Η βάρδια μπορεί να έχει και:
+       from2/to2 : δεύτερο ωράριο την ίδια μέρα (σπαστό ωράριο)
+       note      : σχόλιο, π.χ. ότι εκείνη τη μέρα κάνει και σέρβις
+     Και τα δύο προαιρετικά — παλιές βάρδιες χωρίς αυτά δουλεύουν όπως πριν. */
 
   async function loadWeek(ctx, monday) {
     const raw = await ctx.store.get(`week-${monday}`);
@@ -487,6 +492,20 @@
     return monthReply(ctx, month, await loadMonth(ctx, month), person);
   }
 
+  /**
+   * Διαβάζει ένα ωράριο «από–έως». Και τα δύο κενά σημαίνει «δεν υπάρχει» —
+   * έτσι το δεύτερο ωράριο του σπαστού είναι απλώς προαιρετικό, χωρίς
+   * ξεχωριστό διακόπτη στα δεδομένα.
+   */
+  function readPart(from, to) {
+    const a = typeof from === "string" ? from : "";
+    const b = typeof to === "string" ? to : "";
+    if (!a && !b) return { part: null };
+    if (!TIME.test(a) || !TIME.test(b)) return { error: "Συμπλήρωσε ώρα από και έως." };
+    if (a === b) return { error: "Οι δύο ώρες είναι ίδιες." };
+    return { part: { from: a, to: b } };
+  }
+
   /** Ελέγχει ότι η εβδομάδα που ζητήθηκε είναι όντως μια Δευτέρα. */
   function readWeek(body) {
     const w = typeof body.week === "string" ? body.week : "";
@@ -522,11 +541,31 @@
     if (body.kind === "clear") {
       delete row[day];
     } else {
-      const from = typeof body.from === "string" ? body.from : "";
-      const to = typeof body.to === "string" ? body.to : "";
-      if (!TIME.test(from) || !TIME.test(to)) return fail(400, "Συμπλήρωσε ώρα από και έως.");
-      if (from === to) return fail(400, "Οι δύο ώρες είναι ίδιες.");
-      row[day] = { from, to };
+      const first = readPart(body.from, body.to);
+      if (first.error) return fail(400, first.error);
+      const second = readPart(body.from2, body.to2);
+      if (second.error) return fail(400, second.error);
+      // Δεύτερο ωράριο χωρίς πρώτο δεν βγάζει νόημα — και θα κρυβόταν κιόλας,
+      // αφού ο πίνακας δείχνει πρώτα το πρώτο.
+      if (!first.part && second.part) return fail(400, "Συμπλήρωσε πρώτα το πρώτο ωράριο.");
+
+      // Κοντό επίτηδες: το σχόλιο γράφεται ΜΕΣΑ στο κουτάκι του πίνακα, και
+      // σε κινητό κάθε δέκα χαρακτήρες είναι μία ακόμα σειρά. Προτιμάμε να
+      // κόβεται εδώ παρά να κρύβεται μετά από όσους δεν μπορούν να πατήσουν.
+      const note = clean(body.note, 40);
+      if (!first.part && !note) {
+        // Ούτε ώρες ούτε σχόλιο: η μέρα αδειάζει.
+        delete row[day];
+      } else {
+        const entry = {};
+        if (first.part) Object.assign(entry, first.part);
+        if (second.part) {
+          entry.from2 = second.part.from;
+          entry.to2 = second.part.to;
+        }
+        if (note) entry.note = note;
+        row[day] = entry;
+      }
     }
 
     // Άτομο χωρίς καμία βάρδια δεν χρειάζεται να πιάνει χώρο.
@@ -565,7 +604,8 @@
       if (!findStaff(ctx.company, id)) continue;   // έφυγε από την επιχείρηση
       const copy = {};
       fromDays.forEach((day, i) => {
-        if (row[day]) copy[toDays[i]] = { from: row[day].from, to: row[day].to };
+        // Ολόκληρη η βάρδια: ώρες, δεύτερο ωράριο και σχόλιο.
+        if (row[day]) copy[toDays[i]] = { ...row[day] };
       });
       if (Object.keys(copy).length) shifts[id] = copy;
     }
