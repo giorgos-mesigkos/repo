@@ -33,6 +33,7 @@
     data: null,     // τα δεδομένα του μήνα
     week: "",       // η Δευτέρα της εβδομάδας που βλέπουμε, "2026-11-02"
     rota: null,     // το πρόγραμμα αυτής της εβδομάδας
+    clip: null,     // αντιγραμμένο ωράριο, έτοιμο για επικόλληση
     view: "mine",
     sheet: { day: "", kind: "", adminMode: false },
     shift: { day: "", staffId: "" },
@@ -382,8 +383,10 @@
     // ο επόμενος βλέπει για λίγο τον πίνακα του προηγούμενου (με τις ώρες)
     // μέχρι να φορτώσει ο δικός του.
     state.rota = null;
+    state.clip = null;
     $("rota").innerHTML = "";
     $("week-tools").hidden = true;
+    $("clip-bar").hidden = true;
     $("week-help").textContent = "";
     try {
       localStorage.removeItem(STORAGE);
@@ -704,11 +707,16 @@
     return b - a;
   }
 
-  /** Τα ωράρια μιας βάρδιας: ένα, ή δύο αν είναι σπαστή. */
+  /** Τα ωράρια μιας βάρδιας: ένα, ή δύο αν είναι σπαστή. Καθένα με το δικό
+      του σχόλιο — στο σπαστό ωράριο η δουλειά αλλάζει μέσα στην ίδια μέρα. */
   function partsOf(shift) {
     const parts = [];
-    if (shift.from && shift.to) parts.push({ from: shift.from, to: shift.to });
-    if (shift.from2 && shift.to2) parts.push({ from: shift.from2, to: shift.to2 });
+    if (shift.from && shift.to) {
+      parts.push({ from: shift.from, to: shift.to, note: shift.note || "" });
+    }
+    if (shift.from2 && shift.to2) {
+      parts.push({ from: shift.from2, to: shift.to2, note: shift.note2 || "" });
+    }
     return parts;
   }
 
@@ -751,13 +759,22 @@
     disarmCopy();
     $("week-label").textContent = weekLabel(state.week);
     $("week-tools").hidden = !canPlan;
+
+    // Όσο υπάρχει αντιγραμμένο ωράριο, ο πίνακας είναι σε «επικόλληση»: το
+    // λέει η ταινία από πάνω, και υπάρχει πάντα το «Τέλος» για να σταματήσει.
+    const pasting = Boolean(canPlan && state.clip);
+    $("clip-bar").hidden = !pasting;
+    if (pasting) {
+      $("clip-what").textContent = `Αντιγραμμένο: ${clipText()} — πάτα ένα κουτάκι για να μπει.`;
+    }
     $("week-help").textContent = (canPlan
-      ? "Πάτα ένα κουτάκι και βάλε τι ώρα μπαίνει και τι ώρα σχολάει. Παύλα = ρεπό. Αν δουλεύει δύο φορές την ίδια μέρα, πάτα «Σπαστό ωράριο» και βάλε και δεύτερο. Μπορείς να γράψεις και σχόλιο (π.χ. ότι εκείνη τη μέρα κάνει και σέρβις) — φαίνεται μέσα στο κουτάκι. Το χρωματιστό σημαδάκι στη γωνία δείχνει ότι ο εργαζόμενος είχε ζητήσει κάτι για εκείνη τη μέρα."
+      ? "Πάτα ένα κουτάκι και βάλε τι ώρα μπαίνει και τι ώρα σχολάει. Παύλα = ρεπό. Αν δουλεύει δύο φορές την ίδια μέρα, πάτα «Σπαστό ωράριο» — κάθε ωράριο έχει το δικό του σχόλιο (π.χ. «ταμείο» το πρωί, «σέρβις» το βράδυ). Για να μην ξαναγράφεις τα ίδια, πάτα «Αντιγραφή» σε μια βάρδια και μετά όσα κουτάκια θες. Το χρωματιστό σημαδάκι στη γωνία δείχνει τι είχε ζητήσει ο εργαζόμενος για εκείνη τη μέρα."
       : "Το πρόγραμμα της εβδομάδας, όπως το έφτιαξε η διεύθυνση. Παύλα = ρεπό. Η δική σου γραμμή είναι τονισμένη.")
       + " Σε κινητό σύρε τον πίνακα πλάγια για να δεις όλη την εβδομάδα.";
 
     const table = $("rota");
     table.innerHTML = "";
+    table.classList.toggle("is-pasting", pasting);
 
     /* --- η γραμμή με τις μέρες --- */
     const head = document.createElement("thead");
@@ -851,36 +868,43 @@
       // ωράριο είναι απλώς δύο τέτοιες σειρές.
       const parts = shift ? partsOf(shift) : [];
       for (const part of parts) {
-        const box2 = document.createElement("span");
-        box2.className = "part";
+        const block = document.createElement("span");
+        block.className = "part";
         const from = document.createElement("span");
         from.className = "t-from";
         from.textContent = part.from;
         const to = document.createElement("span");
         to.className = "t-to";
         to.textContent = part.to;
-        box2.append(from, to);
-        box.appendChild(box2);
+        block.append(from, to);
+        // Το σχόλιο γράφεται μέσα στο κουτάκι, κάτω από τις δικές του ώρες:
+        // αλλιώς δεν θα το έβλεπε κανείς από το κινητό του, και στο σπαστό
+        // ωράριο δεν θα ήξερε σε ποιο από τα δύο αναφέρεται.
+        if (part.note) {
+          const note = document.createElement("span");
+          note.className = "c-note";
+          note.textContent = part.note;
+          block.appendChild(note);
+        }
+        box.appendChild(block);
       }
       if (!parts.length) {
         const none = document.createElement("span");
         none.className = "t-none";
         none.textContent = "–";
         box.appendChild(none);
+        // Σχόλιο σε μέρα ρεπό: εξηγεί γιατί λείπει ο άνθρωπος.
+        if (shift && shift.note) {
+          const note = document.createElement("span");
+          note.className = "c-note";
+          note.textContent = shift.note;
+          box.appendChild(note);
+        }
       }
       if (shift) minutes += shiftMinutes(shift);
 
-      // Το σχόλιο γράφεται μέσα στο κουτάκι, αλλιώς δεν θα το έβλεπε κανείς
-      // από το κινητό του — εκεί δεν υπάρχει «πέρασμα με το ποντίκι».
-      if (shift && shift.note) {
-        const note = document.createElement("span");
-        note.className = "c-note";
-        note.textContent = shift.note;
-        box.appendChild(note);
-      }
-
       const notes = [];
-      if (shift && shift.note) notes.push(shift.note);
+      if (shift) notes.push(...[shift.note, shift.note2].filter(Boolean));
       if (wish) {
         box.classList.add(`wish-${wish.kind}`);
         notes.push(wishText(wish));
@@ -890,7 +914,12 @@
       box.title = notes.length ? `${label} · ${notes.join(" · ")}` : label;
       box.setAttribute("aria-label", box.title);
 
-      if (canPlan) box.addEventListener("click", () => openShift(id, day));
+      // Σε λειτουργία επικόλλησης το πάτημα βάζει το αντιγραμμένο ωράριο·
+      // αλλιώς ανοίγει το παραθυράκι για να το γράψεις.
+      if (canPlan) {
+        box.addEventListener("click", () =>
+          (state.clip ? pasteInto(id, day) : openShift(id, day)));
+      }
       td.appendChild(box);
       row.appendChild(td);
     }
@@ -925,12 +954,57 @@
     $("shift-from2").value = (shift && shift.from2) || "";
     $("shift-to2").value = (shift && shift.to2) || "";
     $("shift-note").value = (shift && shift.note) || "";
+    $("shift-note2").value = (shift && shift.note2) || "";
     // Το δεύτερο ωράριο φαίνεται μόνο αν υπάρχει ήδη· αλλιώς το ανοίγει το
     // κουμπί, για να μη ζητάμε τέσσερις ώρες από όποιον θέλει δύο.
     showSplit(Boolean(shift && shift.from2));
     $("shift-clear").hidden = !shift;
     $("shift-error").hidden = true;
     $("shift-sheet").hidden = false;
+  }
+
+  /* ---- αντιγραφή ωραρίου ----
+     Τα ίδια ωράρια επαναλαμβάνονται συνέχεια: ο ίδιος άνθρωπος πέντε μέρες
+     στην ίδια βάρδια, ή όλη η κουζίνα στο ίδιο ωράριο. Αντί να γράφεται
+     ξανά και ξανά, αντιγράφεται μία φορά και μετά μπαίνει με ΕΝΑ πάτημα σε
+     όσα κουτάκια θέλει — γι' αυτό η επικόλληση δεν περνάει από το
+     παραθυράκι: θα ήταν τρία πατήματα αντί για ένα. */
+
+  function copyShift() {
+    const read = readShiftFields();
+    if (read.error) return shiftError(read.error);
+    if (!read.shift.from) {
+      return shiftError("Δεν υπάρχει ωράριο για αντιγραφή — βάλε πρώτα ώρες.");
+    }
+    state.clip = read.shift;
+    $("shift-sheet").hidden = true;
+    renderWeek();
+    say("Αντιγράφηκε. Πάτα όποιο κουτάκι θες για να μπει — όσες φορές θες.");
+  }
+
+  function clipText() {
+    const c = state.clip;
+    if (!c) return "";
+    const parts = partsOf({ ...c, note2: c.note2 })
+      .map((p) => (p.note ? `${p.from}–${p.to} ${p.note}` : `${p.from}–${p.to}`));
+    return parts.join(" & ");
+  }
+
+  /** Βάζει το αντιγραμμένο ωράριο σε ένα κουτάκι, χωρίς ερωτήσεις. */
+  async function pasteInto(staffId, day) {
+    try {
+      state.rota = await api("saveShift", { staffId, day, week: state.week, ...state.clip });
+      renderWeek();
+      say(`${nameInRota(staffId)} · ${dayShort(day)}: ${clipText()}`);
+    } catch (e) {
+      say(e.message, true);
+    }
+  }
+
+  function stopPaste() {
+    state.clip = null;
+    renderWeek();
+    say("");
   }
 
   /** Δείχνει ή κρύβει το δεύτερο ωράριο (σπαστό). Κρύβοντάς το, το αδειάζει. */
@@ -941,6 +1015,7 @@
     if (!on) {
       $("shift-from2").value = "";
       $("shift-to2").value = "";
+      $("shift-note2").value = "";
     }
   }
 
@@ -950,26 +1025,41 @@
     el.hidden = false;
   }
 
-  async function saveShift() {
-    const { staffId, day } = state.shift;
-    const from = $("shift-from").value;
-    const to = $("shift-to").value;
-    const from2 = $("shift-from2").value;
-    const to2 = $("shift-to2").value;
-    const note = $("shift-note").value.trim();
-
+  /**
+   * Διαβάζει το παραθυράκι της βάρδιας. Επιστρέφει { shift } ή { error }.
+   * Οι ίδιοι έλεγχοι ξαναγίνονται στον διακομιστή — εδώ είναι μόνο για να
+   * πάρει ο χρήστης απάντηση αμέσως, χωρίς να περιμένει το δίκτυο.
+   */
+  function readShiftFields() {
+    const shift = {
+      from: $("shift-from").value,
+      to: $("shift-to").value,
+      note: $("shift-note").value.trim(),
+      from2: $("shift-from2").value,
+      to2: $("shift-to2").value,
+      note2: $("shift-note2").value.trim(),
+    };
     // Σκέτο σχόλιο σε μέρα ρεπό επιτρέπεται — εξηγεί γιατί λείπει ο άνθρωπος.
-    if (!from && !to && !note) {
-      return shiftError("Συμπλήρωσε τις ώρες ή γράψε ένα σχόλιο. Για ρεπό, πάτα «Ρεπό».");
+    if (!shift.from && !shift.to && !shift.note) {
+      return { error: "Συμπλήρωσε τις ώρες ή γράψε ένα σχόλιο. Για ρεπό, πάτα «Ρεπό»." };
     }
-    if ((from && !to) || (to && !from)) {
-      return shiftError("Συμπλήρωσε και τις δύο ώρες του πρώτου ωραρίου.");
+    if ((shift.from && !shift.to) || (shift.to && !shift.from)) {
+      return { error: "Συμπλήρωσε και τις δύο ώρες του πρώτου ωραρίου." };
     }
-    if ((from2 && !to2) || (to2 && !from2)) {
-      return shiftError("Συμπλήρωσε και τις δύο ώρες του δεύτερου ωραρίου.");
+    if ((shift.from2 && !shift.to2) || (shift.to2 && !shift.from2)) {
+      return { error: "Συμπλήρωσε και τις δύο ώρες του δεύτερου ωραρίου." };
     }
-    await sendWeek("saveShift", { staffId, day, from, to, from2, to2, note },
-      "Μπήκε στο πρόγραμμα.");
+    if (!shift.from2 && shift.note2) {
+      return { error: "Το σχόλιο του δεύτερου ωραρίου θέλει και ώρες." };
+    }
+    return { shift };
+  }
+
+  async function saveShift() {
+    const read = readShiftFields();
+    if (read.error) return shiftError(read.error);
+    const { staffId, day } = state.shift;
+    await sendWeek("saveShift", { staffId, day, ...read.shift }, "Μπήκε στο πρόγραμμα.");
   }
 
   async function clearShift() {
@@ -1342,6 +1432,8 @@
     $("week-copy").addEventListener("click", copyPrevWeek);
 
     $("shift-save").addEventListener("click", saveShift);
+    $("shift-copy").addEventListener("click", copyShift);
+    $("clip-done").addEventListener("click", stopPaste);
     $("shift-clear").addEventListener("click", clearShift);
     $("shift-split").addEventListener("click", () => {
       showSplit($("shift-second").hidden);

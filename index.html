@@ -123,6 +123,13 @@
       <span class="muted small">Σβήνει ό,τι έχει ήδη γραφτεί σε αυτή την εβδομάδα.</span>
     </div>
 
+    <!-- Φαίνεται αφού πατήσεις «Αντιγραφή» σε μια βάρδια: όσο είναι εδώ, κάθε
+         κουτάκι που πατάς παίρνει το αντιγραμμένο ωράριο με ένα πάτημα. -->
+    <div id="clip-bar" class="clip-bar" hidden>
+      <span id="clip-what"></span>
+      <button id="clip-done" class="ghost small">Τέλος</button>
+    </div>
+
     <div class="rota-wrap">
       <table id="rota" class="rota"></table>
     </div>
@@ -231,23 +238,33 @@
       <div><label for="shift-to">Σχολάει</label><input id="shift-to" type="time" step="900"></div>
     </div>
 
-    <!-- Σπαστό ωράριο: δεύτερο ωράριο την ίδια μέρα. Κρυφό όσο δεν
-         χρειάζεται, για να μη βλέπει τέσσερα κουτιά όποιος θέλει ένα. -->
-    <div id="shift-second" class="field two" hidden>
-      <div><label for="shift-from2">Μπαίνει ξανά</label><input id="shift-from2" type="time" step="900"></div>
-      <div><label for="shift-to2">Σχολάει</label><input id="shift-to2" type="time" step="900"></div>
-    </div>
-    <button id="shift-split" class="ghost small">+ Σπαστό ωράριο</button>
-
+    <!-- Το σχόλιο κάθε ωραρίου κάθεται ΚΑΤΩ ΑΠΟ ΤΙΣ ΔΙΚΕΣ ΤΟΥ ώρες: στο
+         σπαστό ωράριο ο άνθρωπος συχνά κάνει άλλη δουλειά το πρωί και άλλη
+         το βράδυ, οπότε ένα σχόλιο για όλη τη μέρα δεν έφτανε. -->
     <div class="field">
       <label for="shift-note">Σχόλιο <span class="muted small">(λίγες λέξεις, το βλέπουν όλοι)</span></label>
       <input id="shift-note" type="text" maxlength="40">
     </div>
 
+    <!-- Σπαστό ωράριο: δεύτερο ωράριο την ίδια μέρα. Κρυφό όσο δεν
+         χρειάζεται, για να μη βλέπει τέσσερα κουτιά όποιος θέλει ένα. -->
+    <div id="shift-second" hidden>
+      <div class="field two">
+        <div><label for="shift-from2">Μπαίνει ξανά</label><input id="shift-from2" type="time" step="900"></div>
+        <div><label for="shift-to2">Σχολάει</label><input id="shift-to2" type="time" step="900"></div>
+      </div>
+      <div class="field">
+        <label for="shift-note2">Σχόλιο</label>
+        <input id="shift-note2" type="text" maxlength="40">
+      </div>
+    </div>
+    <button id="shift-split" class="ghost small">+ Σπαστό ωράριο</button>
+
     <p id="shift-error" class="error" role="alert" hidden></p>
 
     <div class="row sheet-actions">
       <button id="shift-save" class="primary">Αποθήκευση</button>
+      <button id="shift-copy" class="ghost">Αντιγραφή</button>
       <button id="shift-clear" class="ghost">Ρεπό</button>
       <button id="shift-close" class="ghost">Κλείσιμο</button>
     </div>
