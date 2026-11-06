@@ -92,20 +92,6 @@
       },
     };
     $("demo-banner").hidden = false;
-    $("demo-reset").addEventListener("click", resetDemo);
-  }
-
-  function resetDemo() {
-    try {
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith(DEMO_PREFIX)) localStorage.removeItem(key);
-      }
-      localStorage.removeItem(STORAGE);
-    } catch {
-      /* τίποτα */
-    }
-    for (const key of Object.keys(demoMemory)) delete demoMemory[key];
-    location.reload();
   }
 
   /* ---------------- επικοινωνία ---------------- */
@@ -415,12 +401,20 @@
     // πρόγραμμα. Ο διακομιστής ούτως ή άλλως δεν τα στέλνει στους υπόλοιπους.
     const seesPeople = isAdmin || state.me.role === "planner";
     document.querySelector('[data-view="people"]').hidden = !seesPeople;
-    document.querySelector('[data-view="admin"]').hidden = !isAdmin;
+    // Η «Διαχείριση»: η διεύθυνση τα βλέπει όλα. Ο υπεύθυνος προγράμματος
+    // (λογίστρια) βλέπει μόνο το «Σβήσιμο»· το κλείδωμα ημερών μένει της
+    // διεύθυνσης (το ελέγχει και ο διακομιστής).
+    const seesAdminTab = seesPeople;
+    document.querySelector('[data-view="admin"]').hidden = !seesAdminTab;
+    $("admin-locks-block").hidden = !isAdmin;
+    $("admin-deadline-block").hidden = !isAdmin;
+    $("admin-clear-block").hidden = !seesAdminTab;
+    if (seesAdminTab) setupClear();
     if (!seesPeople && state.view === "people") setView("mine");
+    if (!seesAdminTab && state.view === "admin") setView("mine");
     if (!isAdmin) {
       // Αν πριν ήταν συνδεδεμένος ο υπεύθυνος στην ίδια συσκευή, δεν αφήνουμε
       // τα δικά του πράγματα στη σελίδα.
-      if (state.view === "admin") setView("mine");
       $("admin-calendar").innerHTML = "";
       $("admin-locked").innerHTML = "";
     }
@@ -562,6 +556,43 @@
   function escape(text) {
     return String(text).replace(/[&<>"]/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function canWriteNotes() {
+    return state.me.role === "admin" || state.me.role === "planner";
+  }
+
+  /**
+   * «Ανακοινώσεις» στα «Τα δικά μου»: οι σημειώσεις που έγραψαν στο όνομά
+   * τους η διεύθυνση και ο υπεύθυνος προγράμματος. Τις βλέπουν όλοι.
+   */
+  function renderMyNews() {
+    const box = $("my-news");
+    box.innerHTML = "";
+    const staff = state.data.staff || {};
+    const items = [];
+    for (const [id, entry] of Object.entries(state.data.entries || {})) {
+      const role = staff[id] && staff[id].role;
+      if (role !== "admin" && role !== "planner") continue;
+      for (const [key, d] of Object.entries((entry && entry.days) || {})) {
+        if (d.kind === "note") items.push({ key, id, d });
+      }
+    }
+    items.sort((a, b) => a.key.localeCompare(b.key));
+    $("my-news-block").hidden = !items.length;
+    for (const { key, id, d } of items) {
+      const item = document.createElement("div");
+      item.className = "item";
+      const head = document.createElement("div");
+      head.className = "item-head";
+      const date = document.createElement("span");
+      date.className = "date";
+      date.textContent = dateLabel(key);
+      head.appendChild(date);
+      item.appendChild(head);
+      item.appendChild(requestRow(d, nameOf(id)));
+      box.appendChild(item);
+    }
   }
 
   function renderMyList() {
@@ -1158,6 +1189,118 @@
       : "Δεν υπάρχει προθεσμία — τα αιτήματα γίνονται δεκτά όποτε να 'ναι. Αλλάζει στο company-data.js.";
   }
 
+  /* ---------------- σβήσιμο (Διαχείριση) ----------------
+     Ποτέ «τα πάντα»: διαλέγεις διάστημα (βάρδια ενός ατόμου, μέρα,
+     εβδομάδα, μήνας) και τι σβήνεται. Ρωτάει πριν σβήσει. */
+
+  let clearScope = "day";
+
+  function setupClear() {
+    clearScope = "day";
+    fillStaffSelect($("clear-staff"), true);
+    $("clear-day").value = state.cfg.today;
+    $("clear-month").value = currentMonth(state.cfg.today);
+    $("clear-shifts").checked = true;
+    $("clear-requests").checked = false;
+    $("clear-locks").checked = false;
+    showClear();
+  }
+
+  function pickClearScope(scope) {
+    clearScope = scope;
+    showClear();
+  }
+
+  /** Τι διάστημα έχει διαλεχτεί: τα στοιχεία για τον διακομιστή και η περιγραφή του. */
+  function clearRange() {
+    const day = $("clear-day").value;
+    if (clearScope === "month") {
+      const month = $("clear-month").value;
+      return /^\d{4}-\d{2}$/.test(month) ? { payload: { month }, label: `ολόκληρος ο μήνας, 1 – ${daysInMonth(month)} ${monthLabel(month)}` }
+        : null;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+    if (clearScope === "week") {
+      const week = mondayOf(day);
+      return { payload: { week }, label: `την εβδομάδα ${weekLabel(week)}` };
+    }
+    if (clearScope === "shift") {
+      const staffId = $("clear-staff").value;
+      if (!staffId) return null;
+      const who = (state.cfg.staff.find((p) => p.id === staffId) || {}).name || staffId;
+      return { payload: { day, staffId }, label: `${who}, ${dateLabel(day)}` };
+    }
+    return { payload: { day }, label: dateLabel(day) };
+  }
+
+  function clearWhat() {
+    const isAdmin = state.me.role === "admin";
+    return {
+      shifts: $("clear-shifts").checked,
+      requests: $("clear-requests").checked,
+      locks: isAdmin && clearScope !== "shift" && $("clear-locks").checked,
+    };
+  }
+
+  function showClear() {
+    for (const b of document.querySelectorAll("#clear-scopes .kind")) {
+      b.classList.toggle("is-on", b.dataset.scope === clearScope);
+    }
+    $("clear-staff-row").hidden = clearScope !== "shift";
+    $("clear-day-row").hidden = clearScope === "month";
+    $("clear-month-row").hidden = clearScope !== "month";
+    $("clear-day-label").textContent = clearScope === "week"
+      ? "Μια μέρα της εβδομάδας"
+      : "Ποια μέρα;";
+    // Το κλείδωμα είναι για όλους, όχι για ένα άτομο — και το σβήνει μόνο
+    // η διεύθυνση, όπως και το βάζει.
+    $("clear-locks-row").hidden = state.me.role !== "admin" || clearScope === "shift";
+
+    const what = clearWhat();
+    const names = [];
+    if (what.shifts) names.push("πρόγραμμα");
+    if (what.requests) names.push("αιτήματα");
+    if (what.locks) names.push("κλειδωμένες μέρες");
+    const range = clearRange();
+    let text = "";
+    if (!names.length) text = "Διάλεξε τι θα σβηστεί.";
+    else if (!range) text = clearScope === "shift" ? "Διάλεξε εργαζόμενο και μέρα." : "Διάλεξε ημερομηνία.";
+    else text = `Θα σβηστούν: ${names.join(", ")} — ${range.label}.`;
+    $("clear-summary").textContent = text;
+    $("clear-go").disabled = !names.length || !range;
+  }
+
+  async function runClear() {
+    const range = clearRange();
+    const what = clearWhat();
+    if (!range) return;
+    if (!confirm(`${$("clear-summary").textContent}\n\nΔεν γίνεται αναίρεση. Να σβηστούν;`)) return;
+
+    $("clear-go").disabled = true;
+    try {
+      const out = await api("clearData", { scope: clearScope, what, ...range.payload });
+      const c = out.cleared || {};
+      const parts = [];
+      if (c.shifts) parts.push(`${c.shifts} ${c.shifts === 1 ? "βάρδια" : "βάρδιες"}`);
+      if (c.requests) parts.push(`${c.requests} ${c.requests === 1 ? "αίτημα" : "αιτήματα"}`);
+      if (c.locks) parts.push(`${c.locks} ${c.locks === 1 ? "κλείδωμα" : "κλειδώματα"}`);
+      // Ξαναφορτώνουμε ό,τι φαίνεται, για να μη μείνει κανείς με τα σβησμένα.
+      state.rota = null;
+      await loadMonth();
+      const okText = parts.length
+        ? `Σβήστηκαν: ${parts.join(", ")}.`
+        : "Δεν υπήρχε τίποτα να σβηστεί σε αυτό το διάστημα.";
+      say(okText);
+      setTimeout(() => {
+        if ($("status").textContent === okText) say("");
+      }, 3500);
+    } catch (e) {
+      say(e.message, true);
+    } finally {
+      showClear();
+    }
+  }
+
   function render() {
     $("month-label").textContent = monthLabel(state.month);
 
@@ -1181,6 +1324,7 @@
     }
 
     renderCalendar($("calendar"), false);
+    renderMyNews();
     renderMyList();
     renderAllDays();
     if (state.data.canSeePeople) renderPeople();
@@ -1222,6 +1366,10 @@
 
     // Τα κουμπιά κλειδώματος φαίνονται μόνο στον admin.
     $("sheet-lock").hidden = !isAdmin;
+    // «Σημείωση» γράφουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.
+    const writesNotes = canWriteNotes();
+    document.querySelector('#sheet-kinds [data-kind="note"]').hidden = !writesNotes;
+    $("sheet-kinds").classList.toggle("two-kinds", !writesNotes);
 
     // Τι έχει δηλωθεί ήδη για το άτομο που βλέπουμε.
     preselect(facts.mine);
@@ -1248,7 +1396,7 @@
   }
 
   function preselect(d) {
-    for (const b of document.querySelectorAll(".kind")) b.classList.remove("is-on");
+    for (const b of document.querySelectorAll("#sheet-kinds .kind")) b.classList.remove("is-on");
     if (!d) {
       state.sheet.kind = "";
       $("sheet-hours").hidden = true;
@@ -1274,7 +1422,7 @@
 
   function pickKind(kind) {
     state.sheet.kind = kind;
-    for (const b of document.querySelectorAll(".kind")) {
+    for (const b of document.querySelectorAll("#sheet-kinds .kind")) {
       b.classList.toggle("is-on", b.dataset.kind === kind);
     }
     $("sheet-hours").hidden = kind !== "limited";
@@ -1288,7 +1436,11 @@
 
   async function saveSheet() {
     const { day, kind } = state.sheet;
-    if (!kind) return sheetError("Διάλεξε τι θέλεις: ρεπό, μόνο ώρες, ή σημείωση.");
+    if (!kind) {
+      return sheetError(canWriteNotes()
+        ? "Διάλεξε τι θέλεις: ρεπό, μόνο ώρες, ή σημείωση."
+        : "Διάλεξε τι θέλεις: ρεπό ή μόνο ώρες.");
+    }
 
     const payload = { day, kind, note: $("sheet-note").value };
     if (kind === "limited") {
@@ -1380,7 +1532,8 @@
 
     // Κάθε καρτέλα έχει τη δική της μπάρα: μήνα ή εβδομάδα. Στους
     // «Εργαζόμενους» καμία — τα στοιχεία τους είναι μόνιμα.
-    $("month-bar").hidden = view === "people" || view === "week";
+    $("month-bar").hidden = view === "people" || view === "week" ||
+      (view === "admin" && state.me?.role !== "admin");
     $("week-bar").hidden = view !== "week";
 
     // Το πρόγραμμα το φορτώνουμε την πρώτη φορά που θα το ζητήσει κάποιος,
@@ -1407,6 +1560,15 @@
       if ($("login-staff").value) $("login-pin").focus();
     });
     $("logout").addEventListener("click", logout);
+
+    for (const b of document.querySelectorAll("#clear-scopes .kind")) {
+      b.addEventListener("click", () => pickClearScope(b.dataset.scope));
+    }
+    for (const id of ["clear-staff", "clear-day", "clear-month", "clear-shifts", "clear-requests", "clear-locks"]) {
+      $(id).addEventListener("change", showClear);
+      $(id).addEventListener("input", showClear);
+    }
+    $("clear-go").addEventListener("click", runClear);
 
     for (const t of document.querySelectorAll(".tab")) {
       t.addEventListener("click", () => setView(t.dataset.view));
@@ -1446,7 +1608,7 @@
       if (e.target === $("shift-sheet")) $("shift-sheet").hidden = true;
     });
 
-    for (const b of document.querySelectorAll(".kind")) {
+    for (const b of document.querySelectorAll("#sheet-kinds .kind")) {
       b.addEventListener("click", () => {
         pickKind(b.dataset.kind);
         $("sheet-error").hidden = true;

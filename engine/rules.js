@@ -464,6 +464,11 @@
       if (from === to) return fail(400, "Οι δύο ώρες είναι ίδιες.");
       entry.days[day] = { kind: "limited", from, to, note: clean(body.note, 200) };
     } else if (kind === "note") {
+      // Σημειώσεις (ανακοινώσεις) γράφουν μόνο η διεύθυνση και ο υπεύθυνος
+      // προγράμματος. Ο εργαζόμενος γράφει τον λόγο του μέσα στο ρεπό ή στις ώρες.
+      if (!canPlan(person)) {
+        return fail(403, "Σημειώσεις γράφουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+      }
       const note = clean(body.note, 200);
       if (!note) return fail(400, "Γράψε τη σημείωση.");
       entry.days[day] = { kind: "note", note };
@@ -642,7 +647,121 @@
     return monthReply(ctx, m, data, person);
   }
 
-  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek };
+  /**
+   * Σβήνει δεδομένα ΜΟΝΟ για το διάστημα που διαλέγει ο χρήστης — ποτέ τα
+   * πάντα. Το διάστημα είναι ένα από τα:
+   *   shift : μία βάρδια/μέρα ΕΝΟΣ ατόμου   { day, staffId }
+   *   day   : μία μέρα, όλοι                { day }
+   *   week  : μία εβδομάδα, όλοι            { week: Δευτέρα }
+   *   month : ένας μήνας, όλοι              { month }
+   * και διαλέγει τι σβήνεται: what = { shifts, requests, locks }
+   *   shifts   : το εβδομαδιαίο πρόγραμμα (οι ώρες)
+   *   requests : τα αιτήματα των εργαζομένων (ρεπό, μόνο ώρες, σημειώσεις)
+   *   locks    : οι κλειδωμένες μέρες — μόνο η διεύθυνση, όπως και το
+   *              κλείδωμα. Στο «shift» δεν έχει νόημα: το κλείδωμα είναι
+   *              για όλους.
+   * Τα μόνιμα στοιχεία των εργαζομένων («Τι θέλω γενικά») δεν αγγίζονται.
+   * Η σελίδα ρωτάει πρώτα. Επιστρέφει πόσα σβήστηκαν από το καθένα.
+   */
+  async function clearData(ctx, body, person) {
+    if (!canPlan(person)) {
+      return fail(403, "Σβήνουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    }
+    const scope = body.scope;
+    const what = body.what && typeof body.what === "object" ? body.what : {};
+    const wantShifts = what.shifts === true;
+    const wantRequests = what.requests === true;
+    const wantLocks = what.locks === true && scope !== "shift";
+    if (what.locks === true && scope !== "shift" && person.role !== "admin") {
+      return fail(403, "Τις κλειδωμένες μέρες τις σβήνει μόνο η διεύθυνση.");
+    }
+    if (!wantShifts && !wantRequests && !wantLocks) {
+      return fail(400, "Διάλεξε τι θα σβηστεί.");
+    }
+
+    let days = [];
+    let staffId = "";
+    if (scope === "shift" || scope === "day") {
+      const day = typeof body.day === "string" ? body.day : "";
+      if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
+      days = [day];
+      if (scope === "shift") {
+        const target = findStaff(ctx.company, typeof body.staffId === "string" ? body.staffId : "");
+        if (!target) return fail(400, "Διάλεξε εργαζόμενο.");
+        staffId = target.id;
+      }
+    } else if (scope === "week") {
+      const w = readWeek(body);
+      if (!w) return fail(400, "Λάθος εβδομάδα.");
+      days = weekDays(w);
+    } else if (scope === "month") {
+      const m = typeof body.month === "string" ? body.month : "";
+      if (!MONTH_KEY.test(m)) return fail(400, "Λάθος μήνας.");
+      const date = dateOf(`${m}-01`);
+      while (keyOfDate(date).startsWith(m)) {
+        days.push(keyOfDate(date));
+        date.setUTCDate(date.getUTCDate() + 1);
+      }
+    } else {
+      return fail(400, "Διάλεξε διάστημα.");
+    }
+
+    const daySet = new Set(days);
+    const count = { shifts: 0, requests: 0, locks: 0 };
+
+    // Πρόγραμμα: αποθηκεύεται ανά εβδομάδα — μια εβδομάδα μπορεί να μπαίνει
+    // και σε δύο μήνες, γι' αυτό σβήνουμε μέρα-μέρα, όχι ολόκληρες εβδομάδες.
+    if (wantShifts) {
+      for (const monday of [...new Set(days.map(mondayOf))]) {
+        const data = await loadWeek(ctx, monday);
+        let changed = false;
+        for (const [id, row] of Object.entries(data.shifts)) {
+          if (staffId && id !== staffId) continue;
+          for (const day of Object.keys(row)) {
+            if (!daySet.has(day)) continue;
+            delete row[day];
+            count.shifts++;
+            changed = true;
+          }
+          if (!Object.keys(row).length) delete data.shifts[id];
+        }
+        if (changed) await saveWeek(ctx, monday, data);
+      }
+    }
+
+    // Αιτήματα και κλειδώματα: αποθηκεύονται ανά μήνα.
+    if (wantRequests || wantLocks) {
+      for (const m of [...new Set(days.map(monthOf))]) {
+        const data = await loadMonth(ctx, m);
+        let changed = false;
+        if (wantRequests) {
+          for (const [id, entry] of Object.entries(data.entries)) {
+            if (staffId && id !== staffId) continue;
+            const own = (entry && entry.days) || {};
+            for (const day of Object.keys(own)) {
+              if (!daySet.has(day)) continue;
+              delete own[day];
+              count.requests++;
+              changed = true;
+            }
+          }
+        }
+        if (wantLocks) {
+          for (const day of Object.keys(data.lockedDays)) {
+            if (!daySet.has(day)) continue;
+            delete data.lockedDays[day];
+            count.locks++;
+            changed = true;
+          }
+        }
+        if (changed) await saveMonth(ctx, m, data);
+      }
+    }
+
+    return ok({ cleared: count });
+  }
+
+  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek, clearData };
 
   /**
    * Το μοναδικό σημείο εισόδου.

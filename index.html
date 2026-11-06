@@ -17,7 +17,6 @@
 <!-- Φαίνεται μόνο σε λειτουργία επίδειξης (…/?demo=1) -->
 <div id="demo-banner" class="demo-banner" hidden>
   <span>ΕΠΙΔΕΙΞΗ — τα δεδομένα μένουν μόνο σε αυτή τη συσκευή.</span>
-  <button id="demo-reset" class="ghost small">Μηδένισε</button>
 </div>
 
 <!-- ============ ΟΘΟΝΗ ΣΥΝΔΕΣΗΣ ============ -->
@@ -65,7 +64,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab is-on" data-view="mine" role="tab">Τα δικά μου</button>
     <button class="tab" data-view="week" role="tab">Πρόγραμμα</button>
-    <button class="tab" data-view="all" role="tab">Μέρα-μέρα</button>
+    <button class="tab" data-view="all" role="tab">Ανακοινώσεις &amp; σημειώσεις</button>
     <button class="tab" data-view="people" role="tab">Εργαζόμενοι</button>
     <button class="tab" data-view="admin" role="tab" hidden>Διαχείριση</button>
   </nav>
@@ -108,6 +107,13 @@
       <button id="save-note" class="primary">Αποθήκευση</button>
     </section>
 
+    <!-- Οι σημειώσεις της διεύθυνσης και του υπεύθυνου προγράμματος: τις
+         βλέπουν όλοι, εδώ, χωρίς να ψάχνουν σε άλλη καρτέλα. -->
+    <section id="my-news-block" class="block" hidden>
+      <h2>Ανακοινώσεις</h2>
+      <div id="my-news" class="list"></div>
+    </section>
+
     <section class="block">
       <h2>Τα αιτήματά μου</h2>
       <div id="my-list" class="list"></div>
@@ -143,7 +149,7 @@
 
   <!-- ---- Ο μήνας όλων ---- -->
   <main id="view-all" class="view" hidden>
-    <p class="muted small">Όλα τα αιτήματα του μήνα, μέρα προς μέρα. Οι μέρες χωρίς αίτημα δεν εμφανίζονται.</p>
+    <p class="muted small">Όλα τα αιτήματα, οι ανακοινώσεις και οι σημειώσεις του μήνα, μέρα προς μέρα. Οι μέρες χωρίς τίποτα δεν εμφανίζονται.</p>
     <div id="all-days" class="list"></div>
   </main>
 
@@ -151,22 +157,61 @@
   <main id="view-people" class="view" hidden>
     <p class="muted small">Τι θέλει ο καθένας γενικά, <b>για κάθε μήνα</b>.
       Δεν αλλάζει όταν αλλάζεις μήνα — ισχύει μέχρι να το αλλάξει ο ίδιος.
-      Τα αιτήματα για συγκεκριμένες μέρες είναι στο «Μέρα-μέρα».</p>
+      Τα αιτήματα για συγκεκριμένες μέρες είναι στις «Ανακοινώσεις &amp; σημειώσεις».</p>
     <div id="people-list" class="list"></div>
   </main>
 
   <!-- ---- Διαχείριση (μόνο για admin) ---- -->
   <main id="view-admin" class="view" hidden>
-    <section class="block">
+    <!-- Κλείδωμα και προθεσμία: μόνο η διεύθυνση. -->
+    <section id="admin-locks-block" class="block">
       <h2>Κλείδωμα ημερών</h2>
       <p class="muted small">Κλειδωμένη μέρα = κανείς δεν μπορεί να δηλώσει αίτημα για εκείνη τη μέρα
         (π.χ. αργία, γεμάτο βιβλίο). Πάτα μια μέρα στο ημερολόγιο.</p>
       <div id="admin-calendar" class="calendar"></div>
       <div id="admin-locked" class="list"></div>
     </section>
-    <section class="block">
+    <section id="admin-deadline-block" class="block">
       <h2>Προθεσμία</h2>
       <p id="admin-deadline" class="muted small"></p>
+    </section>
+    <!-- Σβήσιμο: η διεύθυνση και ο υπεύθυνος προγράμματος (λογίστρια).
+         Σβήνει ΜΟΝΟ ό,τι διαλέξεις, για ΜΟΝΟ το διάστημα που διαλέγεις. -->
+    <section id="admin-clear-block" class="block" hidden>
+      <h2>Σβήσιμο</h2>
+      <p class="muted small">Σβήνει μόνο ό,τι διαλέξεις, για το διάστημα που διαλέγεις.
+        Όλα τα υπόλοιπα μένουν όπως είναι.</p>
+
+      <label>Διάστημα</label>
+      <div id="clear-scopes" class="kinds four">
+        <button class="kind" data-scope="shift">Βάρδια<small>ενός ατόμου</small></button>
+        <button class="kind is-on" data-scope="day">Μέρα<small>όλοι</small></button>
+        <button class="kind" data-scope="week">Εβδομάδα<small>Δευ – Κυρ</small></button>
+        <button class="kind" data-scope="month">Μήνας<small>ολόκληρος</small></button>
+      </div>
+
+      <div id="clear-staff-row" hidden>
+        <label for="clear-staff">Ποιος;</label>
+        <select id="clear-staff"></select>
+      </div>
+      <div id="clear-day-row">
+        <label for="clear-day" id="clear-day-label">Ποια μέρα;</label>
+        <input id="clear-day" type="date">
+      </div>
+      <div id="clear-month-row" hidden>
+        <label for="clear-month">Ποιος μήνας;</label>
+        <input id="clear-month" type="month">
+      </div>
+
+      <label>Τι θα σβηστεί</label>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="clear-shifts" checked> Πρόγραμμα <span class="muted">— οι ώρες της βάρδιας</span></label>
+        <label class="check"><input type="checkbox" id="clear-requests"> Αιτήματα <span class="muted">— ρεπό, μόνο ώρες, σημειώσεις</span></label>
+        <label class="check" id="clear-locks-row"><input type="checkbox" id="clear-locks"> Κλειδωμένες μέρες</label>
+      </div>
+
+      <p id="clear-summary" class="clear-summary small"></p>
+      <button id="clear-go" class="ghost danger">Σβήσε</button>
     </section>
   </main>
 </div>

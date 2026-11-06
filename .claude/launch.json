@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "shift-planner",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8787"],
       "port": 8787
     }
