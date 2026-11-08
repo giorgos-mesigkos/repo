@@ -91,6 +91,18 @@
     return text.replace(/\s+/g, " ").trim().slice(0, max);
   }
 
+  /** Όπως το clean, αλλά κρατάει τις αλλαγές γραμμής (περιγραφή, μενού). */
+  function cleanLines(text, max) {
+    if (typeof text !== "string") return "";
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, max);
+  }
+
   const rulesOf = (company) => company.rules || {};
 
   /* ---------------- Το "εισιτήριο" της σύνδεσης ---------------- */
@@ -182,6 +194,75 @@
 
   async function saveWeek(ctx, monday, data) {
     await ctx.store.set(`week-${monday}`, JSON.stringify(data));
+  }
+
+  /* ---------------- Πάρτι & κρατήσεις ----------------
+     Π.χ. ένα παιδικό πάρτι γενεθλίων: μέρα, ώρα, πόσα παιδιά και πόσοι
+     μεγάλοι, περιγραφή και μενού. Τα βλέπουν ΟΛΟΙ στο «Πρόγραμμα»· τα
+     γράφουν η διεύθυνση, ο υπεύθυνος προγράμματος και όσοι πάρουν άδεια
+     από τη διεύθυνση. Κάθε πάρτι λέει ποια τμήματα ειδοποιούνται.
+
+     Αποθηκεύονται ανά μήνα:  events-2026-11 = { list: [ {...}, ... ] } */
+
+  async function loadEvents(ctx, month) {
+    const raw = await ctx.store.get(`events-${month}`);
+    if (!raw) return { list: [] };
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return { list: Array.isArray(data.list) ? data.list : [] };
+  }
+
+  async function saveEvents(ctx, month, data) {
+    await ctx.store.set(`events-${month}`, JSON.stringify(data));
+  }
+
+  /** Οι άδειες που δίνει η διεύθυνση από την εφαρμογή: { events: [ids] }. */
+  async function loadPerms(ctx) {
+    const raw = await ctx.store.get("permissions");
+    const data = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
+    return { events: Array.isArray(data.events) ? data.events : [] };
+  }
+
+  async function savePerms(ctx, data) {
+    await ctx.store.set("permissions", JSON.stringify(data));
+  }
+
+  /** Ποιος γράφει πάρτι & κρατήσεις. */
+  async function canEvents(ctx, person) {
+    if (person.role === "admin" || person.role === "planner") return true;
+    return (await loadPerms(ctx)).events.includes(person.id);
+  }
+
+  /** Τα τμήματα της επιχείρησης, για το «ποιοι ειδοποιούνται». */
+  function departmentNames(company) {
+    return groupedStaff(company).map((g) => g.name).filter((n) => n && n !== "Χωρίς τμήμα");
+  }
+
+  /** Τα πάρτι αυτών των ημερών, με σειρά μέρας και ώρας. */
+  async function eventsForDays(ctx, days) {
+    const set = new Set(days);
+    const out = [];
+    for (const m of [...new Set(days.map(monthOf))]) {
+      for (const ev of (await loadEvents(ctx, m)).list) if (set.has(ev.day)) out.push(ev);
+    }
+    return out.sort((a, b) => (a.day + (a.from || "")).localeCompare(b.day + (b.from || "")));
+  }
+
+  /**
+   * Η ειδοποίηση: πάρτι από σήμερα και για 7 μέρες. Τη βλέπουν όσοι είναι
+   * σε τμήμα που διάλεξε το πάρτι, και όσοι γράφουν πάρτι (για να ξέρουν τι
+   * έρχεται).
+   */
+  async function alertsFor(ctx, person, editor) {
+    const today = todayKey();
+    const days = [];
+    const date = dateOf(today);
+    for (let i = 0; i < 7; i++) {
+      days.push(keyOfDate(date));
+      date.setUTCDate(date.getUTCDate() + 1);
+    }
+    const all = await eventsForDays(ctx, days);
+    return all.filter((ev) =>
+      editor || (person.team && Array.isArray(ev.teams) && ev.teams.includes(person.team)));
   }
 
   /**
@@ -333,7 +414,17 @@
       staff: staffIndex(ctx.company),
       today: todayKey(),
       closed: deadlinePassed(ctx.company, month),
+      ...(await eventExtras(ctx, person)),
     });
+  }
+
+  /** Ό,τι χρειάζεται η σελίδα για τα πάρτι, σε κάθε απάντηση μήνα. */
+  async function eventExtras(ctx, person) {
+    const editor = await canEvents(ctx, person);
+    const out = { canEvents: editor, alerts: await alertsFor(ctx, person, editor) };
+    // Μόνο η διεύθυνση βλέπει (και αλλάζει) ποιοι έχουν άδεια.
+    if (person.role === "admin") out.eventEditors = (await loadPerms(ctx)).events;
+    return out;
   }
 
   /**
@@ -380,6 +471,9 @@
       canPlan: canPlan(person),
       canSeeHours: canSeeHours(person),
       today: todayKey(),
+      events: await eventsForDays(ctx, days),
+      canEvents: await canEvents(ctx, person),
+      departments: departmentNames(ctx.company),
     });
   }
 
@@ -761,7 +855,97 @@
     return ok({ cleared: count });
   }
 
-  const NEEDS_LOGIN = { month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek, clearData };
+  /**
+   * Γράφει ή αλλάζει ένα πάρτι/κράτηση. Αν δοθεί id, αλλάζει το υπάρχον
+   * (που βρίσκεται στη μέρα oldDay — μπορεί να μετακινηθεί σε άλλη μέρα).
+   */
+  async function saveEvent(ctx, body, person) {
+    if (!(await canEvents(ctx, person))) {
+      return fail(403, "Πάρτι και κρατήσεις γράφουν μόνο όσοι έχουν άδεια από τη διεύθυνση.");
+    }
+    const day = typeof body.day === "string" ? body.day : "";
+    if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
+    const time = readPart(body.from, body.to);
+    if (time.error) return fail(400, time.error);
+    const title = clean(body.title, 80);
+    if (!title) return fail(400, "Γράψε τίτλο, π.χ. «Γενέθλια Μαρίας».");
+    const count = (v) => {
+      const n = Number(v);
+      return Number.isInteger(n) && n >= 0 && n <= 9999 ? n : 0;
+    };
+    const known = new Set(departmentNames(ctx.company));
+    const teams = Array.isArray(body.teams)
+      ? [...new Set(body.teams.filter((t) => typeof t === "string" && known.has(t)))]
+      : [];
+
+    const id = typeof body.id === "string" && /^e-[a-z0-9-]{4,40}$/.test(body.id) ? body.id : "";
+    let old = null;
+    if (id) {
+      const oldDay = typeof body.oldDay === "string" && DAY_KEY.test(body.oldDay) ? body.oldDay : day;
+      const oldMonth = monthOf(oldDay);
+      const data = await loadEvents(ctx, oldMonth);
+      old = data.list.find((e) => e.id === id) || null;
+      if (!old) return fail(404, "Το πάρτι δεν βρέθηκε — μπορεί να σβήστηκε.");
+      data.list = data.list.filter((e) => e.id !== id);
+      await saveEvents(ctx, oldMonth, data);
+    }
+
+    const ev = {
+      id: id || `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      day,
+      from: time.part ? time.part.from : "",
+      to: time.part ? time.part.to : "",
+      title,
+      kids: count(body.kids),
+      adults: count(body.adults),
+      description: cleanLines(body.description, 800),
+      menu: cleanLines(body.menu, 800),
+      teams,
+      createdBy: old ? old.createdBy : person.id,
+      updatedBy: person.id,
+      updatedAt: new Date().toISOString(),
+    };
+    const m = monthOf(day);
+    const data = await loadEvents(ctx, m);
+    data.list.push(ev);
+    await saveEvents(ctx, m, data);
+
+    const w = readWeek(body) || mondayOf(day);
+    return weekReply(ctx, w, await loadWeek(ctx, w), person);
+  }
+
+  async function deleteEvent(ctx, body, person) {
+    if (!(await canEvents(ctx, person))) {
+      return fail(403, "Πάρτι και κρατήσεις σβήνουν μόνο όσοι έχουν άδεια από τη διεύθυνση.");
+    }
+    const day = typeof body.day === "string" ? body.day : "";
+    if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
+    const m = monthOf(day);
+    const data = await loadEvents(ctx, m);
+    data.list = data.list.filter((e) => e.id !== body.id);
+    await saveEvents(ctx, m, data);
+    const w = readWeek(body) || mondayOf(day);
+    return weekReply(ctx, w, await loadWeek(ctx, w), person);
+  }
+
+  /** Η διεύθυνση δίνει ή παίρνει πίσω την άδεια για πάρτι & κρατήσεις. */
+  async function setEventEditor(ctx, body, person) {
+    if (person.role !== "admin") return fail(403, "Άδειες δίνει μόνο η διεύθυνση.");
+    const target = findStaff(ctx.company, typeof body.staffId === "string" ? body.staffId : "");
+    if (!target) return fail(400, "Άγνωστος εργαζόμενος.");
+    const perms = await loadPerms(ctx);
+    const set = new Set(perms.events);
+    if (body.on) set.add(target.id);
+    else set.delete(target.id);
+    perms.events = [...set];
+    await savePerms(ctx, perms);
+    return ok({ eventEditors: perms.events });
+  }
+
+  const NEEDS_LOGIN = {
+    month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek, clearData,
+    saveEvent, deleteEvent, setEventEditor,
+  };
 
   /**
    * Το μοναδικό σημείο εισόδου.

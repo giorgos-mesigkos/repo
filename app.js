@@ -409,6 +409,7 @@
     $("admin-locks-block").hidden = !isAdmin;
     $("admin-deadline-block").hidden = !isAdmin;
     $("admin-clear-block").hidden = !seesAdminTab;
+    $("admin-events-block").hidden = !isAdmin;
     if (seesAdminTab) setupClear();
     if (!seesPeople && state.view === "people") setView("mine");
     if (!seesAdminTab && state.view === "admin") setView("mine");
@@ -790,6 +791,7 @@
     disarmCopy();
     $("week-label").textContent = weekLabel(state.week);
     $("week-tools").hidden = !canPlan;
+    renderWeekEvents();
 
     // Όσο υπάρχει αντιγραμμένο ωράριο, ο πίνακας είναι σε «επικόλληση»: το
     // λέει η ταινία από πάνω, και υπάρχει πάντα το «Τέλος» για να σταματήσει.
@@ -831,6 +833,15 @@
       dn.className = "dn";
       dn.textContent = String(Number(day.slice(8)));
       cell.append(wd, dn);
+      const evs = (data.events || []).filter((e) => e.day === day);
+      if (evs.length) {
+        const mark = document.createElement("span");
+        mark.className = "ev";
+        mark.textContent = evs.length > 1 ? `🎉${evs.length}` : "🎉";
+        cell.title = [cell.title, ...evs.map((e) => e.title)].filter(Boolean).join(" · ");
+        mark.setAttribute("aria-label", `${evs.length} πάρτι/κρατήσεις`);
+        cell.appendChild(mark);
+      }
       headRow.appendChild(cell);
     });
 
@@ -1161,6 +1172,7 @@
 
   function renderAdmin() {
     renderCalendar($("admin-calendar"), true);
+    renderEventEditors();
 
     const box = $("admin-locked");
     box.innerHTML = "";
@@ -1187,6 +1199,266 @@
     $("admin-deadline").textContent = day
       ? `Οι εργαζόμενοι δηλώνουν για κάθε μήνα μέχρι τις ${day} του προηγούμενου μήνα. Εσύ δεν δεσμεύεσαι από την προθεσμία. Αλλάζει στο company-data.js.`
       : "Δεν υπάρχει προθεσμία — τα αιτήματα γίνονται δεκτά όποτε να 'ναι. Αλλάζει στο company-data.js.";
+  }
+
+  /* ---------------- πάρτι & κρατήσεις ----------------
+     Τα βλέπουν όλοι στο «Πρόγραμμα». Τα γράφουν η διεύθυνση, ο υπεύθυνος
+     προγράμματος και όσοι πάρουν άδεια. Τα τμήματα που διαλέγει κάθε πάρτι
+     βλέπουν ειδοποίηση στα «Τα δικά μου» τις 7 μέρες πριν. */
+
+  function plural(n, one, many) {
+    return `${n} ${n === 1 ? one : many}`;
+  }
+
+  /** «Σήμερα», «Αύριο» ή «Σε 3 μέρες» — για την ειδοποίηση. */
+  function whenBadge(day, today) {
+    const diff = Math.round((dateOf(day) - dateOf(today)) / 86400000);
+    if (diff === 0) return "Σήμερα";
+    if (diff === 1) return "Αύριο";
+    return `Σε ${diff} μέρες`;
+  }
+
+  function eventCard(ev, opts) {
+    const o = opts || {};
+    const item = document.createElement("div");
+    item.className = "item event";
+    if (ev.day === o.today) item.classList.add("is-today");
+
+    const head = document.createElement("div");
+    head.className = "item-head";
+    const when = document.createElement("span");
+    when.className = "event-when";
+    const hours = ev.from ? ` · ${ev.from}–${ev.to}` : "";
+    when.innerHTML = (o.badge ? `<span class="event-badge">${escape(o.badge)}</span>` : "")
+      + escape(dateLabel(ev.day) + hours);
+    head.appendChild(when);
+    if (o.onEdit) {
+      const edit = document.createElement("button");
+      edit.className = "ghost small";
+      edit.textContent = "Αλλαγή";
+      edit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        o.onEdit(ev);
+      });
+      head.appendChild(edit);
+    }
+    item.appendChild(head);
+
+    const title = document.createElement("div");
+    title.className = "event-title";
+    title.textContent = `🎉 ${ev.title}`;
+    item.appendChild(title);
+
+    const counts = document.createElement("div");
+    counts.className = "event-counts";
+    if (ev.kids) counts.appendChild(chip("", `<b>${plural(ev.kids, "παιδί", "παιδιά")}</b>`));
+    if (ev.adults) counts.appendChild(chip("", `<b>${plural(ev.adults, "μεγάλος", "μεγάλοι")}</b>`));
+    if (ev.kids && ev.adults) counts.appendChild(chip("", `σύνολο ${ev.kids + ev.adults}`));
+    if (counts.childNodes.length) item.appendChild(counts);
+
+    if (ev.description && !o.compact) {
+      const d = document.createElement("div");
+      d.className = "event-text";
+      d.textContent = ev.description;
+      item.appendChild(d);
+    }
+    if (ev.menu && !o.compact) {
+      const l = document.createElement("span");
+      l.className = "event-label";
+      l.textContent = "Μενού";
+      const m = document.createElement("div");
+      m.className = "event-text";
+      m.textContent = ev.menu;
+      item.append(l, m);
+    }
+    if (ev.teams && ev.teams.length && !o.compact) {
+      const t = document.createElement("div");
+      t.className = "event-teams";
+      t.textContent = `Ειδοποιούνται: ${ev.teams.join(", ")}`;
+      item.appendChild(t);
+    }
+    return item;
+  }
+
+  function renderWeekEvents() {
+    const data = state.rota;
+    const list = data.events || [];
+    const box = $("week-events");
+    box.innerHTML = "";
+    $("event-add").hidden = !data.canEvents;
+    $("week-events-block").hidden = !list.length && !data.canEvents;
+    if (!list.length) {
+      box.innerHTML = '<p class="empty">Κανένα πάρτι ή κράτηση αυτή την εβδομάδα.</p>';
+      return;
+    }
+    for (const ev of list) {
+      box.appendChild(eventCard(ev, {
+        today: data.today,
+        onEdit: data.canEvents ? openEvent : null,
+      }));
+    }
+  }
+
+  /** Ειδοποιήσεις στα «Τα δικά μου»: πατάς και πας στο πρόγραμμα εκείνης της μέρας. */
+  function renderAlerts() {
+    const list = state.data.alerts || [];
+    const box = $("alerts");
+    box.innerHTML = "";
+    $("alerts-block").hidden = !list.length;
+    for (const ev of list) {
+      const card = eventCard(ev, {
+        today: state.data.today,
+        badge: whenBadge(ev.day, state.data.today),
+        compact: false,
+      });
+      card.title = "Δες το στο πρόγραμμα";
+      card.addEventListener("click", () => {
+        state.week = mondayOf(ev.day);
+        state.rota = null;
+        setView("week");
+      });
+      box.appendChild(card);
+    }
+  }
+
+  function openEvent(ev) {
+    const e = ev || {};
+    state.event = { id: e.id || "", oldDay: e.day || "" };
+    $("event-sheet-title").textContent = e.id ? "Αλλαγή πάρτι / κράτησης" : "Νέο πάρτι / κράτηση";
+    $("event-title").value = e.title || "";
+    // Νέο: προτείνεται σήμερα αν είναι μέσα στην εβδομάδα, αλλιώς η Δευτέρα της.
+    const today = state.rota.today;
+    const inWeek = state.rota.days.includes(today);
+    $("event-day").value = e.day || (inWeek ? today : state.week);
+    $("event-from").value = e.from || "";
+    $("event-to").value = e.to || "";
+    $("event-kids").value = e.kids ? String(e.kids) : "";
+    $("event-adults").value = e.adults ? String(e.adults) : "";
+    $("event-description").value = e.description || "";
+    $("event-menu").value = e.menu || "";
+
+    const teams = new Set(e.teams || []);
+    const box = $("event-teams");
+    box.innerHTML = "";
+    for (const name of state.rota.departments || []) {
+      const label = document.createElement("label");
+      label.className = "check";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = name;
+      input.checked = teams.has(name);
+      label.append(input, ` ${name}`);
+      box.appendChild(label);
+    }
+    if (!box.childNodes.length) box.innerHTML = '<p class="muted small">Δεν έχουν οριστεί τμήματα.</p>';
+
+    $("event-delete").hidden = !e.id;
+    $("event-error").hidden = true;
+    $("event-sheet").hidden = false;
+    $("event-title").focus();
+  }
+
+  function eventError(text) {
+    $("event-error").textContent = text;
+    $("event-error").hidden = false;
+  }
+
+  async function sendEvent(action, payload, okText) {
+    $("event-save").disabled = true;
+    try {
+      state.rota = await api(action, { ...payload, week: state.week });
+      $("event-sheet").hidden = true;
+      renderWeek();
+      // Οι ειδοποιήσεις στα «Τα δικά μου» έρχονται με τον μήνα.
+      loadMonthQuiet();
+      say(okText);
+      setTimeout(() => {
+        if ($("status").textContent === okText) say("");
+      }, 2500);
+    } catch (err) {
+      eventError(err.message);
+    } finally {
+      $("event-save").disabled = false;
+    }
+  }
+
+  async function loadMonthQuiet() {
+    try {
+      state.data = await api("month", { month: state.month });
+      render();
+    } catch {
+      /* θα ξαναφορτωθεί με την επόμενη αλλαγή */
+    }
+  }
+
+  function saveEvent() {
+    const from = $("event-from").value;
+    const to = $("event-to").value;
+    if (Boolean(from) !== Boolean(to)) return eventError("Συμπλήρωσε και τις δύο ώρες, ή καμία.");
+    if (!$("event-title").value.trim()) return eventError("Γράψε τίτλο, π.χ. «Γενέθλια Μαρίας».");
+    if (!$("event-day").value) return eventError("Διάλεξε μέρα.");
+    const teams = [...document.querySelectorAll("#event-teams input:checked")].map((i) => i.value);
+    sendEvent("saveEvent", {
+      id: state.event.id || undefined,
+      oldDay: state.event.oldDay || undefined,
+      day: $("event-day").value,
+      from,
+      to,
+      title: $("event-title").value,
+      kids: $("event-kids").value,
+      adults: $("event-adults").value,
+      description: $("event-description").value,
+      menu: $("event-menu").value,
+      teams,
+    }, "Αποθηκεύτηκε.");
+  }
+
+  function deleteEvent() {
+    if (!state.event.id) return;
+    if (!confirm("Να σβηστεί αυτό το πάρτι / κράτηση;")) return;
+    sendEvent("deleteEvent", { id: state.event.id, day: state.event.oldDay }, "Σβήστηκε.");
+  }
+
+  /** Διαχείριση: ποιοι άλλοι γράφουν πάρτι & κρατήσεις. */
+  function renderEventEditors() {
+    const box = $("event-editors");
+    box.innerHTML = "";
+    const on = new Set(state.data.eventEditors || []);
+    const staff = state.data.staff || {};
+    for (const p of state.cfg.staff) {
+      const role = staff[p.id] && staff[p.id].role;
+      const always = role === "admin" || role === "planner";
+      const label = document.createElement("label");
+      label.className = "check";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = always || on.has(p.id);
+      input.disabled = always;
+      input.addEventListener("change", () => setEventEditor(p.id, input.checked, input));
+      label.append(input, ` ${p.name}`);
+      if (always) {
+        const note = document.createElement("span");
+        note.className = "muted small";
+        note.textContent = " — πάντα";
+        label.appendChild(note);
+      }
+      box.appendChild(label);
+    }
+  }
+
+  async function setEventEditor(staffId, on, input) {
+    input.disabled = true;
+    try {
+      const out = await api("setEventEditor", { staffId, on });
+      state.data.eventEditors = out.eventEditors;
+      say(on ? "Δόθηκε άδεια." : "Αφαιρέθηκε η άδεια.");
+      setTimeout(() => say(""), 2000);
+    } catch (e) {
+      input.checked = !on;
+      say(e.message, true);
+    } finally {
+      input.disabled = false;
+    }
   }
 
   /* ---------------- σβήσιμο (Διαχείριση) ----------------
@@ -1324,6 +1596,7 @@
     }
 
     renderCalendar($("calendar"), false);
+    renderAlerts();
     renderMyNews();
     renderMyList();
     renderAllDays();
@@ -1570,6 +1843,16 @@
     }
     $("clear-go").addEventListener("click", runClear);
 
+    $("event-add").addEventListener("click", () => openEvent(null));
+    $("event-save").addEventListener("click", saveEvent);
+    $("event-delete").addEventListener("click", deleteEvent);
+    $("event-close").addEventListener("click", () => {
+      $("event-sheet").hidden = true;
+    });
+    $("event-sheet").addEventListener("click", (e) => {
+      if (e.target === $("event-sheet")) $("event-sheet").hidden = true;
+    });
+
     for (const t of document.querySelectorAll(".tab")) {
       t.addEventListener("click", () => setView(t.dataset.view));
     }
@@ -1627,6 +1910,7 @@
       if (e.key !== "Escape") return;
       $("sheet").hidden = true;
       $("shift-sheet").hidden = true;
+      $("event-sheet").hidden = true;
     });
 
     $("sheet-do-lock").addEventListener("click", () =>

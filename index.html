@@ -85,6 +85,12 @@
 
   <!-- ---- Τα δικά μου: ημερολόγιο + σημείωση ---- -->
   <main id="view-mine" class="view">
+    <!-- Ειδοποιήσεις: πάρτι/κρατήσεις των επόμενων ημερών, για όσους αφορούν. -->
+    <section id="alerts-block" class="block alerts" hidden>
+      <h2>🎉 Ειδοποιήσεις</h2>
+      <div id="alerts" class="list"></div>
+    </section>
+
     <p id="intro" class="muted small"></p>
     <div id="calendar" class="calendar"></div>
     <ul class="legend">
@@ -136,6 +142,15 @@
       <button id="clip-done" class="ghost small">Τέλος</button>
     </div>
 
+    <!-- Πάρτι & κρατήσεις της εβδομάδας: τα βλέπουν όλοι. -->
+    <section id="week-events-block" class="week-events-block" hidden>
+      <div class="item-head">
+        <h2 class="week-events-title">🎉 Πάρτι &amp; κρατήσεις</h2>
+        <button id="event-add" class="ghost small" hidden>+ Πάρτι / κράτηση</button>
+      </div>
+      <div id="week-events" class="list"></div>
+    </section>
+
     <div class="rota-wrap">
       <table id="rota" class="rota"></table>
     </div>
@@ -171,6 +186,15 @@
       <div id="admin-calendar" class="calendar"></div>
       <div id="admin-locked" class="list"></div>
     </section>
+    <!-- Ποιοι γράφουν πάρτι & κρατήσεις: η διεύθυνση και ο υπεύθυνος
+         προγράμματος πάντα· οι υπόλοιποι μόνο αν πάρουν άδεια εδώ. -->
+    <section id="admin-events-block" class="block" hidden>
+      <h2>Πάρτι &amp; κρατήσεις — ποιοι γράφουν</h2>
+      <p class="muted small">Η διεύθυνση και ο υπεύθυνος προγράμματος γράφουν πάντα.
+        Τσέκαρε όποιον άλλον θέλεις να μπορεί να βάζει πάρτι και κρατήσεις στο πρόγραμμα.</p>
+      <div id="event-editors" class="checks"></div>
+    </section>
+
     <section id="admin-deadline-block" class="block">
       <h2>Προθεσμία</h2>
       <p id="admin-deadline" class="muted small"></p>
@@ -312,6 +336,50 @@
       <button id="shift-copy" class="ghost">Αντιγραφή</button>
       <button id="shift-clear" class="ghost">Ρεπό</button>
       <button id="shift-close" class="ghost">Κλείσιμο</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ΠΑΡΑΘΥΡΟ ΠΑΡΤΙ / ΚΡΑΤΗΣΗΣ ============ -->
+<div id="event-sheet" class="sheet" hidden>
+  <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="event-sheet-title">
+    <h2 id="event-sheet-title">Πάρτι / κράτηση</h2>
+
+    <div class="field">
+      <label for="event-title">Τίτλος</label>
+      <input id="event-title" type="text" maxlength="80" placeholder="π.χ. Γενέθλια Μαρίας">
+    </div>
+    <div class="field">
+      <label for="event-day">Μέρα</label>
+      <input id="event-day" type="date">
+    </div>
+    <div class="field two">
+      <div><label for="event-from">Από</label><input id="event-from" type="time" step="900"></div>
+      <div><label for="event-to">Έως</label><input id="event-to" type="time" step="900"></div>
+    </div>
+    <div class="field two">
+      <div><label for="event-kids">Παιδιά</label><input id="event-kids" type="number" min="0" max="9999" inputmode="numeric"></div>
+      <div><label for="event-adults">Μεγάλοι</label><input id="event-adults" type="number" min="0" max="9999" inputmode="numeric"></div>
+    </div>
+    <div class="field">
+      <label for="event-description">Περιγραφή</label>
+      <textarea id="event-description" rows="3" maxlength="800"></textarea>
+    </div>
+    <div class="field">
+      <label for="event-menu">Μενού</label>
+      <textarea id="event-menu" rows="4" maxlength="800"></textarea>
+    </div>
+    <div class="field">
+      <label>Ποια τμήματα ειδοποιούνται</label>
+      <div id="event-teams" class="checks"></div>
+    </div>
+
+    <p id="event-error" class="error" role="alert" hidden></p>
+
+    <div class="row sheet-actions">
+      <button id="event-save" class="primary">Αποθήκευση</button>
+      <button id="event-delete" class="ghost danger" hidden>Σβήσιμο</button>
+      <button id="event-close" class="ghost">Κλείσιμο</button>
     </div>
   </div>
 </div>
