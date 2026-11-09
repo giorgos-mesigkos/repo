@@ -165,6 +165,91 @@
     await ctx.store.set("people", JSON.stringify(data));
   }
 
+  /* ---------------- Λογαριασμοί που φτιάχνονται από την εφαρμογή ----------------
+     Το αφεντικό και ο υπεύθυνος προγράμματος βάζουν μόνοι τους κάποιον
+     καινούργιο (όνομα + τετραψήφιο PIN που τους λέει ο ίδιος) και σβήνουν
+     όποιον φεύγει — χωρίς να χρειάζεται αλλαγή στο company-data.js.
+
+       accounts = { added: [{ id, name, pin, team, ... }], removed: [ids],
+                    pins: { id: "1234" },
+                    posts: { id: { team: "Σέρβις", teams: ["Ταμείο"] } } }
+
+     Πόστα: κάθε εργαζόμενος έχει ΕΝΑ βασικό πόστο (team) — σε αυτό
+     εμφανίζεται στον πίνακα του προγράμματος — και όσα άλλα κάνει (teams).
+     Τα άλλα μετράνε π.χ. για τις ειδοποιήσεις των πάρτι.
+
+     Το «pins» κρατάει όσα PIN άλλαξαν από την εφαρμογή — και για όσους
+     είναι γραμμένοι στο company-data.js.
+
+     Όποιος σβήνεται δεν χάνεται από τα παλιά δεδομένα: μένει με active:false,
+     ώστε το όνομά του να φαίνεται ακόμα σε παλιά προγράμματα. */
+
+  async function loadAccounts(ctx) {
+    const raw = await ctx.store.get("accounts");
+    const data = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : {};
+    return {
+      added: Array.isArray(data.added) ? data.added : [],
+      removed: Array.isArray(data.removed) ? data.removed : [],
+      pins: data.pins && typeof data.pins === "object" ? data.pins : {},
+      posts: data.posts && typeof data.posts === "object" ? data.posts : {},
+    };
+  }
+
+  async function saveAccounts(ctx, data) {
+    await ctx.store.set("accounts", JSON.stringify(data));
+  }
+
+  /** Όλα τα πόστα ενός ατόμου: πρώτα το βασικό, μετά τα υπόλοιπα. */
+  function postsOf(p) {
+    const extra = Array.isArray(p.teams) ? p.teams : [];
+    return [...new Set([p.team, ...extra].filter(Boolean))];
+  }
+
+  /**
+   * Καθαρίζει βασικό + επιπλέον πόστα από ό,τι έστειλε η σελίδα. Κρατάει
+   * μόνο τμήματα που υπάρχουν. Αν δεν δόθηκε βασικό, γίνεται βασικό το
+   * πρώτο από τα υπόλοιπα.
+   */
+  function readPosts(company, body) {
+    const known = new Set(allPosts(company));
+    let team = clean(body.team, 40);
+    if (team && !known.has(team)) return { error: "Άγνωστο πόστο." };
+    let teams = Array.isArray(body.teams)
+      ? [...new Set(body.teams.filter((t) => typeof t === "string" && known.has(t)))]
+      : [];
+    if (!team && teams.length) team = teams[0];
+    teams = teams.filter((t) => t !== team);
+    return { team, teams };
+  }
+
+  /** Το προσωπικό του company-data.js μαζί με όσους μπήκαν από την εφαρμογή. */
+  async function withAccounts(ctx) {
+    const acc = await loadAccounts(ctx);
+    const pins = acc.pins;
+    const posts = acc.posts;
+    if (!acc.added.length && !acc.removed.length && !Object.keys(pins).length &&
+      !Object.keys(posts).length) return ctx.company;
+    const withPosts = (q) => (posts[q.id]
+      ? { ...q, team: posts[q.id].team || "", teams: posts[q.id].teams || [] }
+      : q);
+    const gone = new Set(acc.removed);
+    const fixed = ctx.company.staff.map((p) => {
+      let q = gone.has(p.id) ? { ...p, active: false } : p;
+      if (pins[p.id]) q = { ...q, pin: pins[p.id] };
+      return withPosts(q);
+    });
+    const known = new Set(fixed.map((p) => p.id));
+    const added = acc.added
+      .filter((p) => !known.has(p.id))
+      .map((p) => ({
+        id: p.id, name: p.name, pin: pins[p.id] || p.pin, team: p.team || "",
+        teams: Array.isArray(p.teams) ? p.teams : [], role: "staff",
+        added: true, active: !gone.has(p.id),
+      }))
+      .map(withPosts);
+    return { ...ctx.company, staff: [...fixed, ...added] };
+  }
+
   /* ---------------- Το εβδομαδιαίο πρόγραμμα ----------------
      Αυτό είναι το ΤΕΛΙΚΟ πρόγραμμα: ποιος δουλεύει ποια μέρα και από τι
      ώρα ως τι ώρα. Το γράφει μόνο η διεύθυνση ή ο υπεύθυνος προγράμματος.
@@ -233,6 +318,33 @@
   }
 
   /** Τα τμήματα της επιχείρησης, για το «ποιοι ειδοποιούνται». */
+  /** Όλα τα πόστα της επιχείρησης, και όσα δεν έχουν ακόμα κανέναν. */
+  function allPosts(company) {
+    const subs = subPostsOf(company);
+    if (Array.isArray(company.departments) && company.departments.length) {
+      return company.departments.flatMap((d) => [d, ...(subs[d] || [])]);
+    }
+    return [...new Set(company.staff.flatMap((p) => [p.team, ...(p.teams || [])]).filter(Boolean))];
+  }
+
+  /** Τα πόστα μέσα σε κάθε τμήμα, π.χ. { "Παραγωγή": ["Πάσο", "Σχάρα"] }. */
+  function subPostsOf(company) {
+    const out = {};
+    const raw = company.subPosts && typeof company.subPosts === "object" ? company.subPosts : {};
+    for (const [dept, list] of Object.entries(raw)) {
+      if (Array.isArray(list)) out[dept] = list.filter((x) => typeof x === "string" && x);
+    }
+    return out;
+  }
+
+  /** Σε ποιο τμήμα ανήκει ένα πόστο: η «Σχάρα» στην «Παραγωγή». */
+  function deptOf(company, post) {
+    for (const [dept, list] of Object.entries(subPostsOf(company))) {
+      if (list.includes(post)) return dept;
+    }
+    return post;
+  }
+
   function departmentNames(company) {
     return groupedStaff(company).map((g) => g.name).filter((n) => n && n !== "Χωρίς τμήμα");
   }
@@ -262,7 +374,7 @@
     }
     const all = await eventsForDays(ctx, days);
     return all.filter((ev) =>
-      editor || (person.team && Array.isArray(ev.teams) && ev.teams.includes(person.team)));
+      editor || (Array.isArray(ev.teams) && postsOf(person).some((t) => ev.teams.includes(t) || ev.teams.includes(deptOf(ctx.company, t)))));
   }
 
   /**
@@ -305,7 +417,12 @@
   function staffIndex(company) {
     const index = {};
     for (const p of company.staff) {
-      index[p.id] = { name: p.name, team: p.team || "", role: p.role || "staff" };
+      const dept = deptOf(company, p.team || "");
+      index[p.id] = {
+        name: p.name, team: dept, role: p.role || "staff",
+        // Το πόστο μέσα στο τμήμα (π.χ. «Σχάρα»), για να φαίνεται στον πίνακα.
+        post: p.team && dept !== p.team ? p.team : "",
+      };
     }
     return index;
   }
@@ -322,13 +439,13 @@
     const active = company.staff.filter((p) => p.active !== false);
     const names = Array.isArray(company.departments) && company.departments.length
       ? company.departments.slice()
-      : [...new Set(active.map((p) => p.team).filter(Boolean))];
+      : [...new Set(active.map((p) => deptOf(company, p.team)).filter(Boolean))];
 
     const groups = names.map((name) => ({ name, ids: [] }));
     const rest = { name: groups.length ? "Χωρίς τμήμα" : "", ids: [] };
 
     for (const p of active) {
-      const group = groups.find((g) => g.name === p.team);
+      const group = groups.find((g) => g.name === deptOf(company, p.team));
       (group || rest).ids.push(p.id);
     }
     if (rest.ids.length) groups.push(rest);
@@ -456,6 +573,17 @@
     return { requests, lockedDays };
   }
 
+  /**
+   * Οι γραμμές του πίνακα του προγράμματος. Η διεύθυνση (το αφεντικό) δεν
+   * μπαίνει: δεν έχει ωράριο εργασίας.
+   */
+  function rotaGroups(company) {
+    const boss = new Set(company.staff.filter((p) => p.role === "admin").map((p) => p.id));
+    return groupedStaff(company)
+      .map((g) => ({ name: g.name, ids: g.ids.filter((id) => !boss.has(id)) }))
+      .filter((g) => g.ids.length);
+  }
+
   /** Η κοινή απάντηση για το πρόγραμμα: όλη η εβδομάδα, φρέσκια. */
   async function weekReply(ctx, monday, data, person) {
     const days = weekDays(monday);
@@ -467,7 +595,7 @@
       requests: extra.requests,
       lockedDays: extra.lockedDays,
       staff: staffIndex(ctx.company),
-      groups: groupedStaff(ctx.company),
+      groups: rotaGroups(ctx.company),
       canPlan: canPlan(person),
       canSeeHours: canSeeHours(person),
       today: todayKey(),
@@ -865,8 +993,14 @@
     }
     const day = typeof body.day === "string" ? body.day : "";
     if (!DAY_KEY.test(day)) return fail(400, "Λάθος ημερομηνία.");
-    const time = readPart(body.from, body.to);
-    if (time.error) return fail(400, time.error);
+    // Το «έως» είναι προαιρετικό: σε ένα πάρτι γενεθλίων ξέρεις πότε
+    // ξεκινάει, όχι πάντα πότε τελειώνει.
+    const time = typeof body.from === "string" && TIME.test(body.from) &&
+      !(typeof body.to === "string" && body.to)
+      ? { part: { from: body.from, to: "" } }
+      : readPart(body.from, body.to);
+    if (time.error) return fail(400, time.error === "Συμπλήρωσε ώρα από και έως."
+      ? "Βάλε τουλάχιστον τι ώρα ξεκινάει." : time.error);
     const title = clean(body.title, 80);
     if (!title) return fail(400, "Γράψε τίτλο, π.χ. «Γενέθλια Μαρίας».");
     const count = (v) => {
@@ -942,9 +1076,115 @@
     return ok({ eventEditors: perms.events });
   }
 
+  /** Η λίστα λογαριασμών για τη «Διαχείριση». Χωρίς PIN. */
+  function accountsList(company) {
+    return company.staff
+      .filter((p) => p.active !== false)
+      .map((p) => ({
+        id: p.id, name: p.name, team: p.team || "", teams: postsOf(p).filter((t) => t !== p.team),
+        role: p.role || "staff", added: Boolean(p.added),
+      }));
+  }
+
+  function accountsReply(company) {
+    return ok({
+      accounts: accountsList(company),
+      config: publicConfig(company),
+      departments: allPosts(company),
+      subPosts: subPostsOf(company),
+    });
+  }
+
+  async function staffAccounts(ctx, body, person) {
+    if (!canPlan(person)) return fail(403, "Λογαριασμούς βλέπουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    return accountsReply(ctx.company);
+  }
+
+  /** Νέος εργαζόμενος: όνομα, τετραψήφιο PIN και (προαιρετικά) τμήμα. */
+  async function addStaff(ctx, body, person) {
+    if (!canPlan(person)) return fail(403, "Λογαριασμούς φτιάχνουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    const name = clean(body.name, 40);
+    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    if (!name) return fail(400, "Γράψε όνομα.");
+    if (!/^\d{4}$/.test(pin)) return fail(400, "Το PIN πρέπει να είναι 4 ψηφία.");
+    const posts = readPosts(ctx.company, body);
+    if (posts.error) return fail(400, posts.error);
+    const { team, teams } = posts;
+    const same = (a, b) => a.trim().toLocaleLowerCase("el") === b.trim().toLocaleLowerCase("el");
+    if (ctx.company.staff.some((p) => p.active !== false && same(p.name, name))) {
+      return fail(409, `Υπάρχει ήδη λογαριασμός «${name}». Βάλε και επώνυμο ή αρχικό για να ξεχωρίζουν.`);
+    }
+
+    const acc = await loadAccounts(ctx);
+    const id = `s-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    acc.added.push({ id, name, pin, team, teams, createdBy: person.id, createdAt: new Date().toISOString() });
+    await saveAccounts(ctx, acc);
+    return accountsReply(await withAccounts(ctx));
+  }
+
+  /**
+   * Σβήσιμο λογαριασμού. Κανείς δεν σβήνει τον εαυτό του ούτε τη διεύθυνση·
+   * τον υπεύθυνο προγράμματος τον σβήνει μόνο η διεύθυνση.
+   */
+  async function removeStaff(ctx, body, person) {
+    if (!canPlan(person)) return fail(403, "Λογαριασμούς σβήνουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    const id = typeof body.staffId === "string" ? body.staffId : "";
+    const target = findStaff(ctx.company, id);
+    if (!target) return fail(404, "Δεν βρέθηκε αυτός ο λογαριασμός.");
+    if (target.id === person.id) return fail(400, "Δεν μπορείς να σβήσεις τον δικό σου λογαριασμό.");
+    if (target.role === "admin") return fail(403, "Ο λογαριασμός της διεύθυνσης δεν σβήνεται.");
+    if (target.role === "planner" && person.role !== "admin") {
+      return fail(403, "Τον υπεύθυνο προγράμματος τον σβήνει μόνο η διεύθυνση.");
+    }
+
+    const acc = await loadAccounts(ctx);
+    if (!acc.removed.includes(id)) acc.removed.push(id);
+    await saveAccounts(ctx, acc);
+    return accountsReply(await withAccounts(ctx));
+  }
+
+  /**
+   * Αλλαγή PIN. Ο καθένας από τη διεύθυνση και τον υπεύθυνο προγράμματος
+   * αλλάζει το δικό του, και όσων μπορεί να σβήσει. Το PIN της διεύθυνσης
+   * το αλλάζει μόνο η ίδια. Η σύνδεση όσων είναι ήδη μέσα δεν κόβεται.
+   */
+  async function setPin(ctx, body, person) {
+    if (!canPlan(person)) return fail(403, "PIN αλλάζουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    const id = typeof body.staffId === "string" ? body.staffId : "";
+    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    const target = findStaff(ctx.company, id);
+    if (!target) return fail(404, "Δεν βρέθηκε αυτός ο λογαριασμός.");
+    if (!/^\d{4}$/.test(pin)) return fail(400, "Το PIN πρέπει να είναι 4 ψηφία.");
+    if (target.id !== person.id) {
+      if (target.role === "admin") return fail(403, "Το PIN της διεύθυνσης το αλλάζει μόνο η ίδια.");
+      if (target.role === "planner" && person.role !== "admin") {
+        return fail(403, "Το PIN του υπεύθυνου προγράμματος το αλλάζει μόνο η διεύθυνση.");
+      }
+    }
+
+    const acc = await loadAccounts(ctx);
+    acc.pins[id] = pin;
+    await saveAccounts(ctx, acc);
+    return accountsReply(await withAccounts(ctx));
+  }
+
+  /** Αλλαγή πόστων: ποιο είναι το βασικό και ποια άλλα κάνει. */
+  async function setPosts(ctx, body, person) {
+    if (!canPlan(person)) return fail(403, "Πόστα αλλάζουν μόνο η διεύθυνση και ο υπεύθυνος προγράμματος.");
+    const id = typeof body.staffId === "string" ? body.staffId : "";
+    if (!findStaff(ctx.company, id)) return fail(404, "Δεν βρέθηκε αυτός ο λογαριασμός.");
+    const posts = readPosts(ctx.company, body);
+    if (posts.error) return fail(400, posts.error);
+
+    const acc = await loadAccounts(ctx);
+    acc.posts[id] = posts;
+    await saveAccounts(ctx, acc);
+    return accountsReply(await withAccounts(ctx));
+  }
+
   const NEEDS_LOGIN = {
     month, saveDay, saveProfile, lockDay, week, saveShift, copyWeek, clearData,
-    saveEvent, deleteEvent, setEventEditor,
+    saveEvent, deleteEvent, setEventEditor, staffAccounts, addStaff, removeStaff, setPin, setPosts,
   };
 
   /**
@@ -960,6 +1200,9 @@
     if (!ctx.company || !Array.isArray(ctx.company.staff) || !ctx.company.staff.length) {
       return fail(500, "Δεν έχει οριστεί προσωπικό στο company-data.js.");
     }
+    // Όσοι μπήκαν ή σβήστηκαν από την εφαρμογή ισχύουν σε ΟΛΑ: σύνδεση,
+    // λίστες, πρόγραμμα. Ο σβησμένος χάνει αμέσως και τη σύνδεσή του.
+    ctx = { ...ctx, company: await withAccounts(ctx) };
     if (action === "config") return ok(publicConfig(ctx.company));
     if (action === "login") return login(ctx, body);
 

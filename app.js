@@ -37,6 +37,7 @@
     view: "mine",
     sheet: { day: "", kind: "", adminMode: false },
     shift: { day: "", staffId: "" },
+    openAsks: new Set(), // ποια ονόματα είναι ανοιχτά στο «Ζήτησαν κάτι»
   };
 
   const STORAGE = "shift-planner-session";
@@ -409,6 +410,7 @@
     $("admin-locks-block").hidden = !isAdmin;
     $("admin-deadline-block").hidden = !isAdmin;
     $("admin-clear-block").hidden = !seesAdminTab;
+    $("admin-accounts-block").hidden = !seesAdminTab;
     $("admin-events-block").hidden = !isAdmin;
     if (seesAdminTab) setupClear();
     if (!seesPeople && state.view === "people") setView("mine");
@@ -791,6 +793,7 @@
     disarmCopy();
     $("week-label").textContent = weekLabel(state.week);
     $("week-tools").hidden = !canPlan;
+    renderWeekAsks(canPlan);
     renderWeekEvents();
 
     // Όσο υπάρχει αντιγραμμένο ωράριο, ο πίνακας είναι σε «επικόλληση»: το
@@ -884,6 +887,13 @@
     name.className = "name-col";
     name.scope = "row";
     name.textContent = nameInRota(id);
+    const post = data.staff && data.staff[id] && data.staff[id].post;
+    if (post) {
+      const tag = document.createElement("span");
+      tag.className = "rota-post";
+      tag.textContent = post;
+      name.appendChild(tag);
+    }
     row.appendChild(name);
 
     const shifts = data.shifts[id] || {};
@@ -1228,7 +1238,7 @@
     head.className = "item-head";
     const when = document.createElement("span");
     when.className = "event-when";
-    const hours = ev.from ? ` · ${ev.from}–${ev.to}` : "";
+    const hours = !ev.from ? "" : ev.to ? ` · ${ev.from}–${ev.to}` : ` · από ${ev.from}`;
     when.innerHTML = (o.badge ? `<span class="event-badge">${escape(o.badge)}</span>` : "")
       + escape(dateLabel(ev.day) + hours);
     head.appendChild(when);
@@ -1394,7 +1404,7 @@
   function saveEvent() {
     const from = $("event-from").value;
     const to = $("event-to").value;
-    if (Boolean(from) !== Boolean(to)) return eventError("Συμπλήρωσε και τις δύο ώρες, ή καμία.");
+    if (to && !from) return eventError("Βάλε και τι ώρα ξεκινάει.");
     if (!$("event-title").value.trim()) return eventError("Γράψε τίτλο, π.χ. «Γενέθλια Μαρίας».");
     if (!$("event-day").value) return eventError("Διάλεξε μέρα.");
     const teams = [...document.querySelectorAll("#event-teams input:checked")].map((i) => i.value);
@@ -1458,6 +1468,313 @@
       say(e.message, true);
     } finally {
       input.disabled = false;
+    }
+  }
+
+  /* ---------------- «Ζήτησαν κάτι αυτή την εβδομάδα» ----------------
+     Για όσους φτιάχνουν το πρόγραμμα: τα ονόματα όσων έχουν αίτημα μέσα
+     στην εβδομάδα που βλέπουν. Πατάς το όνομα και ανοίγει ακριβώς από κάτω
+     τι ζήτησε, μέρα-μέρα. Οι ανακοινώσεις της διεύθυνσης δεν μετράνε. */
+
+  function weekAsks() {
+    const data = state.rota;
+    const staff = data.staff || {};
+    const order = [];
+    for (const g of data.groups || []) order.push(...g.ids);
+    for (const id of Object.keys(data.requests || {})) if (!order.includes(id)) order.push(id);
+
+    const out = [];
+    for (const id of order) {
+      const role = staff[id] && staff[id].role;
+      const boss = role === "admin" || role === "planner";
+      const days = Object.entries((data.requests || {})[id] || {})
+        .filter(([, w]) => !(boss && w.kind === "note"))
+        .sort(([a], [b]) => a.localeCompare(b));
+      if (days.length) out.push({ id, days });
+    }
+    return out;
+  }
+
+  function renderWeekAsks(canPlan) {
+    const block = $("week-asks-block");
+    const box = $("week-asks");
+    box.innerHTML = "";
+    block.hidden = !canPlan;
+    if (!canPlan) return;
+
+    const asks = weekAsks();
+    if (!asks.length) {
+      box.innerHTML = '<p class="empty">Κανείς δεν ζήτησε κάτι για αυτή την εβδομάδα.</p>';
+      return;
+    }
+    for (const { id, days } of asks) {
+      const item = document.createElement("div");
+      item.className = "ask";
+      const open = state.openAsks.has(id);
+      item.classList.toggle("is-open", open);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ask-name";
+      btn.setAttribute("aria-expanded", String(open));
+      const kinds = [...new Set(days.map(([, w]) => w.kind))];
+      btn.innerHTML = `<span class="ask-arrow" aria-hidden="true">▸</span>`
+        + `<b>${escape(nameInRota(id))}</b>`
+        + kinds.map((k) => `<i class="sw ${k}" aria-hidden="true"></i>`).join("")
+        + `<span class="ask-count">${days.length}</span>`;
+
+      const list = document.createElement("div");
+      list.className = "ask-list";
+      list.hidden = !open;
+      for (const [day, w] of days) {
+        const row = document.createElement("div");
+        row.className = "ask-row";
+        row.innerHTML = `<span class="date">${dateLabel(day)}</span>`;
+        row.appendChild(requestRow(w, ""));
+        list.appendChild(row);
+      }
+
+      btn.addEventListener("click", () => {
+        const now = list.hidden;
+        list.hidden = !now;
+        item.classList.toggle("is-open", now);
+        btn.setAttribute("aria-expanded", String(now));
+        if (now) state.openAsks.add(id);
+        else state.openAsks.delete(id);
+      });
+      item.append(btn, list);
+      box.appendChild(item);
+    }
+  }
+
+  /* ---------------- λογαριασμοί προσωπικού (Διαχείριση) ----------------
+     Η διεύθυνση και ο υπεύθυνος προγράμματος βάζουν καινούργιους (όνομα +
+     PIN που τους λέει ο ίδιος) και σβήνουν όσους φεύγουν. */
+
+  async function loadAccounts() {
+    try {
+      showAccounts(await api("staffAccounts", {}));
+    } catch (e) {
+      say(e.message, true);
+    }
+  }
+
+  function showAccounts(out) {
+    state.accounts = out.accounts || [];
+    if (out.config) {
+      // Νέα λίστα ονομάτων παντού: σύνδεση, «Για ποιον;», σβήσιμο, πρόγραμμα.
+      state.cfg = { ...state.cfg, staff: out.config.staff, staffGroups: out.config.staffGroups };
+      fillStaffSelect($("login-staff"), true, "");
+      fillStaffSelect($("clear-staff"), true);
+    }
+
+    state.posts = out.departments || [];
+    state.subPosts = new Set(Object.values(out.subPosts || {}).flat());
+    // Η φόρμα του καινούργιου: κρατάει ό,τι έχει ήδη τσεκαριστεί.
+    const kept = state.newPosts ? state.newPosts.read() : { team: "", teams: [] };
+    state.newPosts = postsEditor(state.posts, kept.team, kept.teams);
+    $("acc-posts").replaceChildren(state.newPosts.el);
+
+    const box = $("acc-list");
+    box.innerHTML = "";
+    const isAdmin = state.me.role === "admin";
+    const ROLE = { admin: "διεύθυνση", planner: "υπεύθυνος προγράμματος" };
+    for (const a of state.accounts) {
+      const item = document.createElement("div");
+      item.className = "item acc-item";
+      const head = document.createElement("div");
+      head.className = "item-head";
+      item.appendChild(head);
+      const text = document.createElement("span");
+      const posts = a.team ? `★ ${a.team}` + (a.teams.length ? ` · ${a.teams.join(" · ")}` : "") : "χωρίς πόστο";
+      text.innerHTML = `<b>${escape(a.name)}</b>`
+        + (ROLE[a.role] ? ` <span class="muted small">${escape(ROLE[a.role])}</span>` : "")
+        + `<span class="acc-posts-line small">${escape(posts)}</span>`;
+      head.appendChild(text);
+      const canRemove = a.id !== state.me.id && a.role !== "admin" && (a.role !== "planner" || isAdmin);
+      const canPin = a.id === state.me.id || canRemove;
+      const tools = document.createElement("span");
+      tools.className = "acc-tools";
+      const postBtn = document.createElement("button");
+      postBtn.className = "ghost small";
+      postBtn.textContent = "Πόστα";
+      postBtn.addEventListener("click", () => togglePosts(a, item, postBtn));
+      tools.appendChild(postBtn);
+      if (canPin) {
+        const pinBtn = document.createElement("button");
+        pinBtn.className = "ghost small";
+        pinBtn.textContent = "Αλλαγή PIN";
+        pinBtn.addEventListener("click", () => changePin(a, pinBtn));
+        tools.appendChild(pinBtn);
+      }
+      head.appendChild(tools);
+      if (canRemove) {
+        const btn = document.createElement("button");
+        btn.className = "ghost small danger";
+        btn.textContent = "Σβήσε";
+        btn.addEventListener("click", () => removeAccount(a, btn));
+        tools.appendChild(btn);
+      }
+      box.appendChild(item);
+    }
+  }
+
+  function accountError(text) {
+    const err = $("acc-error");
+    err.textContent = text || "";
+    err.hidden = !text;
+  }
+
+  async function addAccount() {
+    const name = $("acc-name").value.trim();
+    const pin = $("acc-pin").value.trim();
+    if (!name) return accountError("Γράψε όνομα.");
+    if (!/^\d{4}$/.test(pin)) return accountError("Το PIN πρέπει να είναι 4 ψηφία.");
+    accountError("");
+    $("acc-add").disabled = true;
+    try {
+      const posts = state.newPosts.read();
+      state.newPosts = null; // ο επόμενος ξεκινάει με άδεια πόστα
+      showAccounts(await api("addStaff", { name, pin, ...posts }));
+      $("acc-name").value = "";
+      $("acc-pin").value = "";
+      state.rota = null; // να βγει και στον πίνακα του προγράμματος
+      say(`Έτοιμος ο λογαριασμός «${name}». Μπαίνει με το όνομά του και το PIN ${pin}.`);
+      setTimeout(() => say(""), 4000);
+    } catch (e) {
+      accountError(e.message);
+    } finally {
+      $("acc-add").disabled = false;
+    }
+  }
+
+  /**
+   * Επιλογή πόστων: ένα κουτάκι για κάθε πόστο που κάνει, και ένα ★ για το
+   * βασικό. Το ★ τσεκάρει μόνο του και το κουτάκι· αν βγάλεις το κουτάκι του
+   * βασικού, βασικό γίνεται το επόμενο τσεκαρισμένο.
+   */
+  function postsEditor(all, team, teams) {
+    const el = document.createElement("div");
+    el.className = "posts";
+    const name = `main-${Math.random().toString(36).slice(2, 8)}`;
+    const has = new Set([team, ...(teams || [])].filter(Boolean));
+    const rows = [];
+
+    const fixMain = () => {
+      const main = rows.find((r) => r.star.checked);
+      if (main && main.box.checked) return;
+      if (main) main.star.checked = false;
+      const first = rows.find((r) => r.box.checked);
+      if (first) first.star.checked = true;
+    };
+
+    for (const post of all) {
+      const row = document.createElement("div");
+      row.className = "post-row";
+      // Πόστο μέσα σε τμήμα (π.χ. «Σχάρα» στην «Παραγωγή»): λίγο πιο μέσα.
+      if (state.subPosts && state.subPosts.has(post)) row.classList.add("is-sub");
+      const label = document.createElement("label");
+      label.className = "check";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = has.has(post);
+      label.append(box, ` ${post}`);
+
+      const starLabel = document.createElement("label");
+      starLabel.className = "post-star";
+      starLabel.title = "Βασικό πόστο";
+      const star = document.createElement("input");
+      star.type = "radio";
+      star.name = name;
+      star.checked = post === team;
+      starLabel.append(star, document.createTextNode(" ★ βασικό"));
+
+      box.addEventListener("change", fixMain);
+      star.addEventListener("change", () => { box.checked = true; });
+      row.append(label, starLabel);
+      el.appendChild(row);
+      rows.push({ post, box, star });
+    }
+    if (!all.length) el.innerHTML = '<p class="muted small">Δεν έχουν οριστεί πόστα.</p>';
+    fixMain();
+
+    return {
+      el,
+      read() {
+        const main = rows.find((r) => r.star.checked && r.box.checked);
+        return {
+          team: main ? main.post : "",
+          teams: rows.filter((r) => r.box.checked && r !== main).map((r) => r.post),
+        };
+      },
+    };
+  }
+
+  /** Ανοίγει / κλείνει την αλλαγή πόστων ακριβώς κάτω από το όνομα. */
+  function togglePosts(a, item, btn) {
+    const open = item.querySelector(".acc-edit");
+    if (open) {
+      open.remove();
+      btn.classList.remove("is-on");
+      return;
+    }
+    btn.classList.add("is-on");
+    const box = document.createElement("div");
+    box.className = "acc-edit";
+    const editor = postsEditor(state.posts || [], a.team, a.teams);
+    const save = document.createElement("button");
+    save.className = "small";
+    save.textContent = "Αποθήκευση πόστων";
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      try {
+        showAccounts(await api("setPosts", { staffId: a.id, ...editor.read() }));
+        state.rota = null; // να μπει στη σωστή θέση στον πίνακα
+        say(`Άλλαξαν τα πόστα του λογαριασμού «${a.name}».`);
+        setTimeout(() => say(""), 3000);
+      } catch (e) {
+        save.disabled = false;
+        say(e.message, true);
+      }
+    });
+    box.append(editor.el, save);
+    item.appendChild(box);
+  }
+
+  async function changePin(a, btn) {
+    const mine = a.id === state.me.id;
+    const pin = prompt(mine
+      ? "Το νέο σου PIN (4 ψηφία):"
+      : `Νέο PIN για «${a.name}» (4 ψηφία) — αυτό που θα σου πει ο ίδιος:`);
+    if (pin === null) return;
+    if (!/^\d{4}$/.test(pin.trim())) {
+      say("Το PIN πρέπει να είναι 4 ψηφία. Δεν άλλαξε τίποτα.", true);
+      return;
+    }
+    btn.disabled = true;
+    try {
+      showAccounts(await api("setPin", { staffId: a.id, pin: pin.trim() }));
+      say(mine
+        ? `Άλλαξε το PIN σου. Από την επόμενη σύνδεση μπαίνεις με ${pin.trim()}.`
+        : `Άλλαξε το PIN του λογαριασμού «${a.name}». Μπαίνει πλέον με ${pin.trim()}.`);
+      setTimeout(() => say(""), 4000);
+    } catch (e) {
+      btn.disabled = false;
+      say(e.message, true);
+    }
+  }
+
+  async function removeAccount(a, btn) {
+    if (!confirm(`Να σβηστεί ο λογαριασμός «${a.name}»;\n\nΔεν θα μπορεί πια να μπει στην εφαρμογή. Ό,τι υπάρχει ήδη στα παλιά προγράμματα μένει.`)) return;
+    btn.disabled = true;
+    try {
+      showAccounts(await api("removeStaff", { staffId: a.id }));
+      state.rota = null;
+      say(`Σβήστηκε ο λογαριασμός «${a.name}».`);
+      setTimeout(() => say(""), 3000);
+    } catch (e) {
+      btn.disabled = false;
+      say(e.message, true);
     }
   }
 
@@ -1812,6 +2129,7 @@
     // Το πρόγραμμα το φορτώνουμε την πρώτη φορά που θα το ζητήσει κάποιος,
     // για να μη φορτώνει δύο πράγματα κάθε φορά που μπαίνει στην εφαρμογή.
     if (view === "week" && !state.rota) loadWeek();
+    if (view === "admin" && !$("admin-accounts-block").hidden) loadAccounts();
   }
 
   /* ---------------- σύνδεση γεγονότων ---------------- */
@@ -1844,6 +2162,13 @@
     $("clear-go").addEventListener("click", runClear);
 
     $("event-add").addEventListener("click", () => openEvent(null));
+    $("acc-add").addEventListener("click", addAccount);
+    $("acc-pin").addEventListener("input", () => {
+      $("acc-pin").value = $("acc-pin").value.replace(/\D/g, "").slice(0, 4);
+    });
+    $("acc-pin").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addAccount();
+    });
     $("event-save").addEventListener("click", saveEvent);
     $("event-delete").addEventListener("click", deleteEvent);
     $("event-close").addEventListener("click", () => {

@@ -610,3 +610,57 @@ button.danger:hover { background: rgba(239, 68, 68, .12); }
 
 /* Ο λόγος μέσα στο παράθυρο της μέρας: χαμηλό πλαίσιο, χωρεί μια πρόταση. */
 textarea.note-small { min-height: 56px; }
+
+/* ---- «Ζήτησαν κάτι αυτή την εβδομάδα»: όνομα, και από κάτω η λίστα ---- */
+.week-asks { margin: .2rem 0 .9rem; }
+.asks { display: flex; flex-direction: column; gap: .4rem; }
+.ask { border: 1px solid var(--line); border-radius: 10px; background: var(--card-2); overflow: hidden; }
+.ask-name {
+  width: 100%; display: flex; align-items: center; gap: .45rem;
+  background: transparent; border: 0; border-radius: 0; color: var(--text);
+  padding: .65rem .8rem; text-align: left; font-size: .95rem;
+}
+.ask-name:hover { background: var(--card); }
+.ask-arrow { display: inline-block; transition: transform .15s; color: var(--muted); }
+.ask.is-open .ask-arrow { transform: rotate(90deg); }
+.ask-count {
+  margin-left: auto; min-width: 1.6rem; text-align: center; font-size: .8rem; font-weight: 700;
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: .05rem .45rem;
+}
+.ask-list { border-top: 1px solid var(--line); padding: .3rem .8rem .6rem; display: flex; flex-direction: column; }
+.ask-row { padding: .45rem 0; border-bottom: 1px dashed var(--line); }
+.ask-row:last-child { border-bottom: 0; }
+.ask-row .date { display: block; font-weight: 600; font-size: .85rem; text-transform: capitalize; margin-bottom: .25rem; }
+
+/* ---- Λογαριασμοί προσωπικού ---- */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-top: 0; }
+.acc-list-title { margin: 1.2rem 0 .4rem; font-size: 1rem; }
+#acc-add { margin-top: .7rem; }
+#acc-list { gap: .35rem; }
+#acc-list .item { padding: .5rem .75rem; }
+#acc-list button.danger { margin-top: 0; }
+.acc-tools { display: flex; gap: .4rem; flex-wrap: nowrap; flex-shrink: 0; }
+#acc-list .item-head > span:first-child { min-width: 0; }
+.field-hint { margin: .3rem 0 .4rem; }
+
+/* ---- Πόστα ---- */
+.acc-pin { max-width: 9rem; }
+.acc-item { display: flex; flex-direction: column; }
+.acc-posts-line { display: block; color: var(--muted); margin-top: .15rem; }
+.posts { display: flex; flex-direction: column; gap: .15rem; margin: .3rem 0 .2rem; }
+.post-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+  border-bottom: 1px dashed var(--line); padding: .15rem 0; }
+.post-row:last-child { border-bottom: 0; }
+.post-row label.check { margin: 0; flex: 1; }
+.post-star { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: var(--muted);
+  white-space: nowrap; margin: 0; cursor: pointer; }
+.post-row:has(.post-star input:checked) .post-star { color: var(--accent); font-weight: 700; }
+.acc-edit { border-top: 1px solid var(--line); margin-top: .5rem; padding-top: .4rem; }
+.acc-edit > button { margin-top: .5rem; }
+.acc-tools button.is-on { background: var(--card-2); border-color: var(--accent); }
+.post-star input { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; accent-color: var(--accent); }
+#acc-list .item-head { flex-wrap: wrap; row-gap: .45rem; }
+#acc-list .item-head > span:first-child { flex: 1 1 10rem; }
+.post-row.is-sub { padding-left: 1.6rem; }
+.post-row.is-sub label.check { font-size: .92rem; }
+.rota-post { display: block; font-size: .7rem; font-weight: 500; color: var(--muted); margin-top: .1rem; }
